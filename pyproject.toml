@@ -1,0 +1,36 @@
+[project]
+name = "agentdesk"
+version = "0.1.0"
+description = "AgentDesk - reliable multi-agent workflow automation runtime"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# 单一分发包：领域层（agents / tools / skills）与服务层（backend）都在仓库顶层，
+# 因此打包根必须在仓库根目录，否则顶层包无法被 import。
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agents*", "tools*", "skills*", "backend*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

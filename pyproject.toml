@@ -68,4 +68,5 @@ select = ["B", "E", "F", "I", "SIM", "UP"]
 python_version = "3.11"
 strict = true
 warn_unreachable = true
+explicit_package_bases = true
 plugins = ["pydantic.mypy"]

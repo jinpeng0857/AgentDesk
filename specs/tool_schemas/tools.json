@@ -1,4 +1,739 @@
 {
-  "version": "0.1.0",
-  "tools": []
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "check_service",
+      "description": "Side effects: read. Required inputs: service_name. Result: operational status, optional incident ID, and check time. Sensitive data: none. Approval: none.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "check_service",
+            "default": "check_service",
+            "title": "Kind",
+            "type": "string"
+          },
+          "service_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Service Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_name"
+        ],
+        "title": "CheckServiceArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "ServiceStatus": {
+            "enum": [
+              "operational",
+              "degraded",
+              "outage"
+            ],
+            "title": "ServiceStatus",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "check_service",
+            "default": "check_service",
+            "title": "Kind",
+            "type": "string"
+          },
+          "service_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Service Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/ServiceStatus"
+          },
+          "incident_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Incident Id"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_name",
+          "status",
+          "checked_at"
+        ],
+        "title": "CheckServiceResult",
+        "type": "object"
+      },
+      "side_effects": "read",
+      "risk_level": "low",
+      "idempotent": true,
+      "timeout_s": 5.0
+    },
+    {
+      "name": "create_ticket",
+      "description": "Side effects: write. Required inputs: requester_id, title, description, and source_ticket_id. Result: downstream ticket ID and status. Sensitive data: description may contain user-provided details and must be redacted in audit. Approval: Policy is required; allowed low-risk requests need no human.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "create_ticket",
+            "default": "create_ticket",
+            "title": "Kind",
+            "type": "string"
+          },
+          "requester_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requester Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "source_ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Ticket Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requester_id",
+          "title",
+          "description",
+          "source_ticket_id"
+        ],
+        "title": "CreateTicketArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "WriteResultStatus": {
+            "enum": [
+              "created",
+              "accepted",
+              "succeeded"
+            ],
+            "title": "WriteResultStatus",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "create_ticket",
+            "default": "create_ticket",
+            "title": "Kind",
+            "type": "string"
+          },
+          "downstream_ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Downstream Ticket Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/WriteResultStatus"
+          }
+        },
+        "required": [
+          "downstream_ticket_id",
+          "status"
+        ],
+        "title": "CreateTicketResult",
+        "type": "object"
+      },
+      "side_effects": "write",
+      "risk_level": "low",
+      "idempotent": true,
+      "timeout_s": 5.0
+    },
+    {
+      "name": "process_refund",
+      "description": "Side effects: write. Required inputs: requester_id, order_id, amount, currency, and order_version. Result: refund ID, status, amount, and currency. Sensitive data: order and requester details must be redacted in audit. Approval: Policy is required; amount at or above 200.00 USD requires a human.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "process_refund",
+            "default": "process_refund",
+            "title": "Kind",
+            "type": "string"
+          },
+          "requester_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requester Id",
+            "type": "string"
+          },
+          "order_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Order Id",
+            "type": "string"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "order_version": {
+            "minimum": 1,
+            "title": "Order Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requester_id",
+          "order_id",
+          "amount",
+          "currency",
+          "order_version"
+        ],
+        "title": "ProcessRefundArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "WriteResultStatus": {
+            "enum": [
+              "created",
+              "accepted",
+              "succeeded"
+            ],
+            "title": "WriteResultStatus",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "process_refund",
+            "default": "process_refund",
+            "title": "Kind",
+            "type": "string"
+          },
+          "refund_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Refund Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/WriteResultStatus"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refund_id",
+          "status",
+          "amount",
+          "currency"
+        ],
+        "title": "ProcessRefundResult",
+        "type": "object"
+      },
+      "side_effects": "write",
+      "risk_level": "medium",
+      "idempotent": true,
+      "timeout_s": 10.0
+    },
+    {
+      "name": "query_order",
+      "description": "Side effects: read. Required inputs: order_id. Result: owner, status, refundable amount, currency, and version. Sensitive data: requester identifier and order details must be access-controlled. Approval: none.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "query_order",
+            "default": "query_order",
+            "title": "Kind",
+            "type": "string"
+          },
+          "order_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id"
+        ],
+        "title": "QueryOrderArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "OrderStatus": {
+            "enum": [
+              "pending",
+              "paid",
+              "refunded",
+              "cancelled"
+            ],
+            "title": "OrderStatus",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "query_order",
+            "default": "query_order",
+            "title": "Kind",
+            "type": "string"
+          },
+          "order_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Order Id",
+            "type": "string"
+          },
+          "requester_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requester Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/OrderStatus"
+          },
+          "refundable_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Refundable Amount"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "order_id",
+          "requester_id",
+          "status",
+          "refundable_amount",
+          "currency",
+          "version"
+        ],
+        "title": "QueryOrderResult",
+        "type": "object"
+      },
+      "side_effects": "read",
+      "risk_level": "low",
+      "idempotent": true,
+      "timeout_s": 3.0
+    },
+    {
+      "name": "query_user",
+      "description": "Side effects: read. Required inputs: user_id. Result: account status, masked email, and resource version. Sensitive data: masked email only. Approval: none.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "query_user",
+            "default": "query_user",
+            "title": "Kind",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "QueryUserArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "AccountStatus": {
+            "enum": [
+              "active",
+              "inactive",
+              "locked"
+            ],
+            "title": "AccountStatus",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "query_user",
+            "default": "query_user",
+            "title": "Kind",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          },
+          "account_status": {
+            "$ref": "#/$defs/AccountStatus"
+          },
+          "masked_email": {
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Masked Email",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "account_status",
+          "masked_email",
+          "version"
+        ],
+        "title": "QueryUserResult",
+        "type": "object"
+      },
+      "side_effects": "read",
+      "risk_level": "low",
+      "idempotent": true,
+      "timeout_s": 3.0
+    },
+    {
+      "name": "request_access",
+      "description": "Side effects: write. Required inputs: requester_id, resource, and justification. Result: access request ID and status; this never grants access directly. Sensitive data: requester and justification must be redacted in audit. Approval: Policy is required; allowed self-requests need no human in this MVP.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "request_access",
+            "default": "request_access",
+            "title": "Kind",
+            "type": "string"
+          },
+          "requester_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requester Id",
+            "type": "string"
+          },
+          "resource": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Resource",
+            "type": "string"
+          },
+          "justification": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Justification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requester_id",
+          "resource",
+          "justification"
+        ],
+        "title": "RequestAccessArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "WriteResultStatus": {
+            "enum": [
+              "created",
+              "accepted",
+              "succeeded"
+            ],
+            "title": "WriteResultStatus",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "request_access",
+            "default": "request_access",
+            "title": "Kind",
+            "type": "string"
+          },
+          "access_request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Access Request Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/WriteResultStatus"
+          }
+        },
+        "required": [
+          "access_request_id",
+          "status"
+        ],
+        "title": "RequestAccessResult",
+        "type": "object"
+      },
+      "side_effects": "write",
+      "risk_level": "medium",
+      "idempotent": true,
+      "timeout_s": 5.0
+    },
+    {
+      "name": "reset_password",
+      "description": "Side effects: write. Required inputs: user_id and account_version. Result: user ID, temporary password, and credential version. Sensitive data: temporary_password must be encrypted at rest and never logged. Approval: Policy is required; only an active self-owned account is allowed.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "reset_password",
+            "default": "reset_password",
+            "title": "Kind",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          },
+          "account_version": {
+            "minimum": 1,
+            "title": "Account Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "account_version"
+        ],
+        "title": "ResetPasswordArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "reset_password",
+            "default": "reset_password",
+            "title": "Kind",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          },
+          "temporary_password": {
+            "format": "password",
+            "title": "Temporary Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "credential_version": {
+            "minimum": 1,
+            "title": "Credential Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "temporary_password",
+          "credential_version"
+        ],
+        "title": "ResetPasswordResult",
+        "type": "object"
+      },
+      "side_effects": "write",
+      "risk_level": "medium",
+      "idempotent": true,
+      "timeout_s": 10.0
+    },
+    {
+      "name": "search_knowledge",
+      "description": "Side effects: read. Required inputs: query and top_k. Result: ranked knowledge references with document and chunk identifiers. Sensitive data: none; indexed cases must already be redacted. Approval: none.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "search_knowledge",
+            "default": "search_knowledge",
+            "title": "Kind",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 1,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchKnowledgeArgs",
+        "type": "object"
+      },
+      "result_schema": {
+        "$defs": {
+          "KnowledgeSearchItem": {
+            "additionalProperties": false,
+            "properties": {
+              "document_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Document Id",
+                "type": "string"
+              },
+              "chunk_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Chunk Id",
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 200,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "content_excerpt": {
+                "maxLength": 1000,
+                "minLength": 1,
+                "title": "Content Excerpt",
+                "type": "string"
+              },
+              "score": {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "title": "Score",
+                "type": "number"
+              }
+            },
+            "required": [
+              "document_id",
+              "chunk_id",
+              "title",
+              "content_excerpt",
+              "score"
+            ],
+            "title": "KnowledgeSearchItem",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "search_knowledge",
+            "default": "search_knowledge",
+            "title": "Kind",
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/$defs/KnowledgeSearchItem"
+            },
+            "title": "Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "refs"
+        ],
+        "title": "SearchKnowledgeResult",
+        "type": "object"
+      },
+      "side_effects": "read",
+      "risk_level": "low",
+      "idempotent": true,
+      "timeout_s": 8.0
+    }
+  ]
 }

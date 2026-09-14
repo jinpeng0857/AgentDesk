@@ -11,7 +11,6 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from tools.schemas import (
     ActionToolName,
     ToolArgsUnion,
-    ToolName,
     ToolResultUnion,
     WriteToolName,
 )
@@ -193,7 +192,9 @@ class ApprovalSnapshot(StrictModel):
 class ToolResult(StrictModel):
     request_id: Identifier
     operation_id: Identifier | None
-    tool_name: ToolName
+    # Open by design (architecture §6.6): a rejected attempt must be able to name
+    # a tool that is not in the registry, otherwise F-04 could not be audited.
+    tool_name: Identifier
     outcome: ToolOutcome
     data: ToolResultUnion | None
     error_code: Annotated[str, Field(min_length=1, max_length=128)] | None

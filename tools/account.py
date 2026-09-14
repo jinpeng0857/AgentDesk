@@ -1,0 +1,14 @@
+"""Account read capability.
+
+Domain layer: this module depends only on ``tools.context`` Protocols and must
+never import ``backend``, a database driver, Redis or ARQ.
+"""
+
+from __future__ import annotations
+
+from tools.context import UserRepository
+from tools.schemas import QueryUserArgs, QueryUserResult
+
+
+async def query_user(args: QueryUserArgs, repository: UserRepository) -> QueryUserResult:
+    return await repository.query_user(args)

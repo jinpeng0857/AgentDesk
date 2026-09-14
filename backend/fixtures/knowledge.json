@@ -1,0 +1,84 @@
+{
+  "version": "0.1.0",
+  "documents": [
+    {
+      "document_id": "doc-network-vpn",
+      "title": "VPN 连接故障排查 SOP",
+      "tags": ["network", "vpn"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-vpn#1",
+          "content": "确认公司 VPN 客户端已升级到受支持版本，并检查系统时钟偏差不超过五分钟。"
+        },
+        {
+          "chunk_id": "doc-network-vpn#2",
+          "content": "先查询 vpn 服务状态；若状态为 degraded 或 outage，请记录 incident_id 并等待服务恢复，不要反复重连。"
+        },
+        {
+          "chunk_id": "doc-network-vpn#3",
+          "content": "若服务状态为 operational 且客户端版本正确，收集客户端日志并创建下游跟进工单。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-wifi",
+      "title": "办公 Wi-Fi 配置与新设备入网",
+      "tags": ["network", "wifi"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-wifi#1",
+          "content": "新设备接入办公 Wi-Fi 需使用 802.1X 企业认证，用户名为企业账号，证书由 IT 统一签发。"
+        },
+        {
+          "chunk_id": "doc-network-wifi#2",
+          "content": "若认证失败，请先确认设备时间正确，再删除已保存的旧配置文件后重新连接。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-account-lockout",
+      "title": "账号锁定后的自助恢复",
+      "tags": ["account", "lockout"],
+      "chunks": [
+        {
+          "chunk_id": "doc-account-lockout#1",
+          "content": "连续五次密码错误会锁定账号。锁定后需等待 15 分钟自动解锁，或按流程申请人工重置。"
+        },
+        {
+          "chunk_id": "doc-account-lockout#2",
+          "content": "自助恢复只适用于本人 active 账号；为他人重置密码需要走权限审批流程。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-access-policy",
+      "title": "最小权限申请规范",
+      "tags": ["permission"],
+      "chunks": [
+        {
+          "chunk_id": "doc-access-policy#1",
+          "content": "权限申请必须写明资源名、用途和预期使用时长，系统只创建申请，不直接授权。"
+        },
+        {
+          "chunk_id": "doc-access-policy#2",
+          "content": "生产环境管理权限一律需要人工审批，不得由自动化流程直接开通。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-ticket-sla",
+      "title": "工单分级与升级时限",
+      "tags": ["query", "sla"],
+      "chunks": [
+        {
+          "chunk_id": "doc-ticket-sla#1",
+          "content": "工单分为 P1 至 P4。P1 需 15 分钟内响应，P2 为 1 小时，P3 为 1 个工作日，P4 为 3 个工作日。"
+        },
+        {
+          "chunk_id": "doc-ticket-sla#2",
+          "content": "超过响应时限的工单会自动升级到下一级支持组，并保留原始 trace 供复盘。"
+        }
+      ]
+    }
+  ]
+}

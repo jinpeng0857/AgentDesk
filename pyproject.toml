@@ -73,8 +73,10 @@ explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
 # numpy's bundled stubs use PEP 695 `type` statements that require Python 3.12.
-# The openai SDK reaches numpy only through its optional voice-helper proxy, so
-# skip that single module and keep static checking targeted at Python 3.11.
+# numpy is reached only through third-party packages we consume as opaque
+# dependencies (chromadb, and the openai SDK's optional voice-helper proxy), so
+# skip following those packages rather than raising the project's own target
+# version. Our code never depends on their declared types.
 [[tool.mypy.overrides]]
-module = ["openai._extras.numpy_proxy"]
+module = ["chromadb", "chromadb.*", "openai._extras.numpy_proxy"]
 follow_imports = "skip"

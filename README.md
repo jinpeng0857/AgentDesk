@@ -90,18 +90,25 @@ Action 生成 PendingOperation
 
 ## 当前真实状态
 
-仓库已完成 Phase 0 的契约产出与本地验收；它仍不是完整可运行的业务应用。
+仓库已完成 Phase 0 的契约产出与本地验收，并已实现 Phase 1 只读纵切的基础部分；它仍不是完整可运行的业务应用。
 
 当前可以验证的内容：
 
 - Git 仓库、隔离开发分支、Python/前端锁文件和基础质量配置已建立；
 - 四份 Agent contract 与四份 Prompt 已填写并可由脚本校验；
 - 八个 Tool 的 Pydantic v2 模型、Registry、白名单和生成式 JSON Schema 已落库；
-- FastAPI 暴露 13 个 Phase 0 接口契约，OpenAPI 与前端 TypeScript 类型均由代码生成；
+- FastAPI 暴露 13 个接口契约，OpenAPI 与前端 TypeScript 类型均由代码生成；
 - `eval/golden_dataset.json` 包含 20 条已人工确认标签的冒烟评估样本；
-- Docker Compose 当前只提供 PostgreSQL 与 Redis，两个基础设施服务已做健康启动验证。
+- Docker Compose 只提供 PostgreSQL 与 Redis，两个基础设施服务已做健康启动验证；
+- PostgreSQL 业务表与 LangGraph checkpoint 表由 Alembic 从空库建出，应用启动时不隐式建表；
+- `/api/auth/login`、`/api/auth/me` 与 `POST /api/tickets` 已实现：Argon2id + JWT 认证、校验 issuer/audience/expiry、单事务写入工单与 outbox 后返回 HTTP 202；
+- ARQ 使用严格 JSON 载荷与确定性 `start:{ticket_id}` 作业 ID，API 不运行 Agent 图；
+- 四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索已实现，并可由 `scripts/seed_demo_data.py` 确定性播种；
+- 四个业务写 Tool 在 Phase 1 没有任何实现：执行网关在解析实现之前就确定性拒绝，且每次尝试都写入脱敏审计。
 
-仍未实现的是 Agent 行为、LangGraph、Worker、数据库表与 migration、JWT、写操作执行网关、审批恢复、业务 Tool 实现、前端页面、评估指标与 CI。因此不得把契约端点的存在描述为业务能力已经完成，也不得宣称完整应用可以一键部署。
+**仍未实现**：LangGraph 运行时与 Worker 图执行、checkpoint 恢复、工单查询与 Trace API、前端页面、只读纵切的端到端验收，以及任何评估指标与 CI。因此不得把契约端点或只读组件的存在描述为完整业务能力已经完成。
+
+**Phase 1 尚未完成。** 其验收门禁要求在工作区干净的提交上产出可追溯的 live 模型前后对比 artifact；当前缺少 OpenAI-compatible 凭据，该产物**不存在**，计划明确要求在此停止而不是事后补造。所以既不得宣称 Phase 1 完成，也不得宣称完整应用可以一键部署。
 
 ### Phase 0 状态
 
@@ -117,6 +124,20 @@ Action 生成 PendingOperation
 | 最终验收门禁 | 完成 |
 
 Phase 0 只建立后续开发必须遵守的契约基线，不代表 Phase 1～3 的业务实现已经完成。
+
+### Phase 1 状态
+
+| 任务 | 状态 |
+|---|---|
+| 持久化基础、ORM 与 Alembic 迁移 | 完成 |
+| Argon2 + JWT 认证与真实 Auth API | 完成 |
+| JSON ARQ 队列、事务 outbox 与 HTTP 202 | 完成 |
+| OpenAI-compatible 模型适配层与确定性 Fake | 完成 |
+| 只读 Agent / Tool / 治理网关 / 八个 Adapter | 完成 |
+| live 模型前后对比门禁 | **阻塞：缺少 OpenAI-compatible 凭据** |
+| LangGraph 运行时与 Worker 恢复 | 未开始（被上一行阻塞） |
+| 工单查询与 Trace API | 未开始（被同一门禁阻塞） |
+| Vue 最小切片、CI 与 Phase 1 验收 | 未开始（被同一门禁阻塞） |
 
 ---
 
@@ -151,23 +172,23 @@ high_risk
 
 ## API 契约
 
-下表中的路由和请求/响应模型已经进入 OpenAPI。Phase 0 仅实现契约外壳：`/health` 返回存活状态，`/ready` 在依赖未接入时返回 503，其余业务端点稳定返回 501；真实认证、持久化、入队和查询在后续阶段实现。
+下表中的路由和请求/响应模型都来自 OpenAPI。状态含义：`已实现` 表示端点在运行时真实访问数据库或基础设施；`501` 表示它稳定返回 `NOT_IMPLEMENTED` 契约错误，不代表功能已具备。
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/auth/login` | 模拟用户登录 |
-| GET | `/api/auth/me` | 当前身份 |
-| POST | `/api/tickets` | 创建工单，返回 HTTP 202 |
-| GET | `/api/tickets` | 当前用户工单列表 |
-| GET | `/api/tickets/{ticket_id}` | 查询状态与结果 |
-| GET | `/api/tickets/{ticket_id}/trace` | 查询脱敏轨迹 |
-| GET | `/api/approvals` | approver 的待审批列表 |
-| GET | `/api/approvals/{approval_id}` | 审批详情 |
-| POST | `/api/approvals/{approval_id}/decision` | approve/reject，带乐观锁版本 |
-| GET | `/api/eval/runs` | Eval 历史 |
-| GET | `/api/eval/runs/{run_id}` | 单次 Eval 报告 |
-| GET | `/health` | 进程存活 |
-| GET | `/ready` | PostgreSQL/Redis/配置就绪 |
+| 方法 | 路径 | 说明 | 状态 |
+|---|---|---|---|
+| POST | `/api/auth/login` | Argon2 校验后签发 JWT | 已实现 |
+| GET | `/api/auth/me` | 当前身份，校验 JWT 与账号状态 | 已实现 |
+| POST | `/api/tickets` | 单事务写入工单与 outbox，返回 HTTP 202 | 已实现 |
+| GET | `/api/tickets` | 当前用户工单列表 | 501 |
+| GET | `/api/tickets/{ticket_id}` | 查询状态与结果 | 501 |
+| GET | `/api/tickets/{ticket_id}/trace` | 查询脱敏轨迹 | 501 |
+| GET | `/api/approvals` | approver 的待审批列表 | 501 |
+| GET | `/api/approvals/{approval_id}` | 审批详情 | 501 |
+| POST | `/api/approvals/{approval_id}/decision` | approve/reject，带乐观锁版本 | 501 |
+| GET | `/api/eval/runs` | Eval 历史 | 501 |
+| GET | `/api/eval/runs/{run_id}` | 单次 Eval 报告 | 501 |
+| GET | `/health` | 进程存活 | 已实现 |
+| GET | `/ready` | PostgreSQL/Redis/配置就绪 | 已实现，依赖未就绪时 503 |
 
 OpenAPI 是前后端接口唯一来源。前端类型通过 `openapi-typescript` 生成，不手写 DTO。
 
@@ -216,23 +237,19 @@ Langfuse 配置为可选项。任何密钥、Token 和临时口令都不能进�
 
 ### 当前阶段
 
-当前可运行契约校验和 PostgreSQL/Redis 基础设施；完整应用尚不可启动。请先阅读：
+当前可运行契约校验、PostgreSQL/Redis 基础设施，以及认证与工单提交的只读纵切基础；包含 Agent 图与前端在内的完整应用尚不可启动。请先阅读：
 
 1. [AGENTS.md](AGENTS.md)：开发契约；
 2. [docs/architecture.md](docs/architecture.md)：完整设计；
 3. [specs/README.md](specs/README.md)：机器契约索引；
 4. [PORTFOLIO.md](PORTFOLIO.md)：证据与简历纪律。
 
-### Phase 0 验证
-
-安装锁定依赖并检查契约：
+### 契约检查（不需要基础设施）
 
 ```powershell
-Copy-Item .env.example .env
 uv sync --all-groups
-uv run ruff check agents tools backend eval scripts tests/unit
+uv run ruff check agents tools skills backend eval scripts tests
 uv run mypy agents tools backend eval scripts
-uv run pytest tests/unit -q
 uv run python scripts/export_tool_schemas.py --check
 uv run python scripts/export_openapi.py --check
 uv run python scripts/validate_agent_contracts.py
@@ -242,7 +259,29 @@ Set-Location frontend
 npm ci
 npm run generate:api-types
 npm run type-check
+Set-Location ..
 ```
+
+### Phase 1 集成验证（需要真实 PostgreSQL 与 Redis）
+
+```powershell
+docker compose up -d postgres redis
+$env:DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@localhost:5432/agentdesk"
+uv run alembic upgrade head
+uv run python scripts/seed_demo_data.py --reset-demo-data
+uv run pytest tests -q
+```
+
+这些命令验证空库迁移、Argon2+JWT 认证、单事务 outbox 与 HTTP 202、只读执行网关的零写保证，以及 Chroma 引用的五个必需字段。**它们不验证 Agent 图执行**，因为 LangGraph 运行时尚未实现。
+
+### 只读评估冒烟（不需要凭据，产物不入库）
+
+```powershell
+uv run python eval/run_eval.py --mode offline --stage model-baseline `
+  --output eval/artifacts/phase1-offline-smoke.local.json
+```
+
+离线模式使用确定性替身，只证明评测外壳本身可用，不证明 Prompt 或模型质量。`--mode live` 需要 OpenAI-compatible 凭据，并且拒绝在工作区不干净的提交上运行。
 
 启动当前基础设施：
 

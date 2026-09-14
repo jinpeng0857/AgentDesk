@@ -32,7 +32,7 @@
 | `agent_contracts/action.yaml` | Action propose/execute 边界和 Tool 白名单 | [`docs/architecture.md` §7.3](../docs/architecture.md)、`agents/schemas.py`、`tools/registry.py`、`prompts/action.yaml` |
 | `agent_contracts/policy.yaml` | Policy 确定性判定边界 | [`docs/architecture.md` §7.4](../docs/architecture.md)、`agents/schemas.py`、`prompts/policy.yaml` |
 | `tool_schemas/tools.json` | 八个 Tool 的可检查 Schema 快照 | [`docs/architecture.md` §9](../docs/architecture.md)、`tools/registry.py`、`tools/schemas.py` |
-| `openapi/openapi.json` | Phase 0 API 契约快照 | [`docs/architecture.md` §11.2](../docs/architecture.md)、`backend/main.py`、`backend/api/` |
+| `openapi/openapi.json` | API 契约快照，当前标记 `x-agentdesk-status: phase-1-partial` | [`docs/architecture.md` §11.2](../docs/architecture.md)、`backend/main.py`、`backend/api/` |
 
 `eval/golden_dataset.json` 位于 `eval/`，不属于本目录；它是人工审核的评估输入，不是由代码生成的接口契约。
 

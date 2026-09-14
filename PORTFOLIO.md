@@ -24,7 +24,7 @@
 
 ## 2. 当前可验证状态
 
-截至 Phase 0 契约闭合：
+截至 Phase 1 只读纵切基础（**Phase 1 尚未完成**）：
 
 ### 已完成
 
@@ -37,20 +37,28 @@
 - 从 FastAPI 代码导出 OpenAPI，再生成前端 TypeScript API 类型。
 - 建立 20 条人工确认标签的冒烟评估数据，覆盖五类 intent 和八个 Tool。
 - 锁定 Python 与前端依赖；PostgreSQL、Redis Compose 服务已通过健康启动检查。
-- 初始化 Git，并以独立功能分支保留可审查的 Phase 0 提交历史。
+- 初始化 Git，并以独立功能分支保留可审查的提交历史。
+- Alembic 从空 PostgreSQL 建出业务表与 LangGraph checkpoint 表，应用启动时不隐式建表。
+- 实现 Argon2id + JWT 认证，强制校验 issuer、audience 与有效期。
+- `POST /api/tickets` 在单事务内写入工单与 outbox 后返回 HTTP 202；API 不运行 Agent 图。
+- ARQ 使用严格 JSON 载荷与确定性 `start:{ticket_id}` 作业 ID，并测试了重复投递与 Redis 故障路径。
+- 实现 OpenAI-compatible 模型适配层与确定性 Fake，区分可重试与不可重试失败。
+- 实现四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索。
+- 只读执行网关对四个写工具确定性拒绝且零副作用，每次尝试都写入脱敏审计。
 
 ### 尚未完成
 
-- Agent 行为、业务 Tool、Graph、Policy、Worker 和 API 业务实现；
-- PostgreSQL Schema 和 Alembic migrations；
-- JWT 身份与审批接口；
+- LangGraph 运行时、Worker 图执行与 checkpoint 恢复；
+- 工单查询与 Trace API；
 - 前端页面；
-- E2E、集成测试和确定性失败注入；
+- 四个业务写 Tool 的真实实现，以及幂等账本、Policy 风险矩阵、审批与 interrupt/resume；
 - 完整 80 条 Golden Dataset、baseline、Live Eval 和任何可发布实测指标；
 - 包含 frontend/api/worker 的完整 Docker Compose 可运行栈；
 - 三个 CI 工作流及其实际运行记录。
 
-因此当前可以展示为“已完成契约基线、正在开发业务纵切的个人工程项目”，不能写成“设计并实现了完整系统”。
+Phase 1 的 live 模型前后对比门禁因缺少 OpenAI-compatible 凭据而阻塞，该 artifact 不存在，因此不存在可发布的模型或系统指标。
+
+因此当前可以展示为“已完成契约基线、已落地只读纵切基础、正在开发图运行时与业务纵切的个人工程项目”，不能写成“设计并实现了完整系统”。
 
 ---
 
@@ -58,14 +66,14 @@
 
 | 候选能力 | 写入简历前必须具备的证据 | 当前状态 |
 |---|---|---|
-| 多 Agent 编排 | 可运行图、路由测试、真实 Trace | 未满足 |
-| 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | 未满足 |
-| Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | 部分满足：Registry、白名单和 Schema 已有 |
+| 多 Agent 编排 | 可运行图、路由测试、真实 Trace | 未满足：四个 Agent 角色与 Prompt 边界已实现并有契约测试，但无可运行图 |
+| 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | 部分满足：HTTP 202、JSON ARQ 载荷、确定性 job ID 与 outbox 投递测试已有；图执行与重启恢复未实现 |
+| Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | 部分满足：Registry、白名单、Schema、只读执行网关与脱敏审计测试已有；幂等账本与写路径属 Phase 2 |
 | Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | 未满足 |
-| RAG | 可回查引用、检索评估产物 | 未满足 |
-| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核冒烟样本已提交 |
-| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：OpenAPI 生成类型已提交 |
-| 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证 |
+| RAG | 可回查引用、检索评估产物 | 部分满足：Chroma 返回五字段可回查引用并已测试；检索评估产物缺失 |
+| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核冒烟样本与离线评测外壳已提交；无 Live Eval |
+| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：OpenAPI 生成类型已提交；页面未实现 |
+| 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证；应用镜像未实现 |
 | 量化指标 | 可下载 eval artifact + Git SHA | 未满足 |
 
 当某行证据全部存在后，才能新增对应完成时 bullet。不能先写 bullet 再等待实现追上文案。

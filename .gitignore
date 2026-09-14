@@ -42,3 +42,8 @@ Thumbs.db
 
 # ---- 隔离开发工作区 ----
 .worktrees/
+
+# ---- 评估产物 ----
+# 正式 artifact 由显式 git add 提交；本地临时运行不入库。
+eval/artifacts/*.local.json
+eval/artifacts/scratch/

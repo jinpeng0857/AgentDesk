@@ -41,6 +41,21 @@
 
 ---
 
+## Execution Status
+
+- [x] Task 1 — 基线提交 2c78337；隔离分支 feat/phase-0-contract-foundation。
+- [x] Task 2 — 依赖与配置提交 b1dd09a。
+- [x] Task 3 — 领域契约提交 f4da291。
+- [x] Task 4 — Tool Registry 提交 05e28de。
+- [x] Task 5 — Agent/Prompt 契约提交 dcf1773。
+- [x] Task 6 — OpenAPI/TypeScript 契约提交 c9e4766。
+- [x] Task 7 — 20 条样例已由仓库所有者人工审核。
+- [ ] Task 8 — 正在执行。
+- [ ] Task 9 — 等待 Task 8 完成。
+- [ ] Task 10 — 等待最终验收。
+
+---
+
 ## Target File Map
 
 ### Create

@@ -36,6 +36,13 @@ class GoldenCase(StrictModel):
     tags: set[Annotated[str, Field(min_length=1, max_length=64)]]
 
 
+class GoldenDataset(StrictModel):
+    version: Annotated[str, Field(pattern=r"^\d+\.\d+\.\d+$")]
+    level: Literal["development", "smoke", "full"]
+    review_status: Literal["pending_review", "reviewed"]
+    cases: list[GoldenCase]
+
+
 class EvalArtifactMetadata(StrictModel):
     run_id: Annotated[str, Field(min_length=1, max_length=128)]
     mode: Literal["offline", "live"]

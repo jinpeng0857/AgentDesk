@@ -49,7 +49,7 @@ build-backend = "setuptools.build_meta"
 # 因此打包根必须在仓库根目录，否则顶层包无法被 import。
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agents*", "tools*", "skills*", "backend*"]
+include = ["agents*", "tools*", "skills*", "backend*", "eval*"]
 namespaces = true
 
 [tool.pytest.ini_options]

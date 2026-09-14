@@ -1224,7 +1224,7 @@ AgentDesk/
 - 20 条人工 Golden Cases；
 - pyproject、前端依赖和 Compose 目标依赖确定。
 
-验收：没有空契约、没有 Schema 命名冲突、文档链接有效。当前仓库已完成本阶段产出，最终门禁正在按 [`Phase 0 implementation plan`](superpowers/plans/2026-09-14-phase-0-contract-foundation.md) 执行；通过前不把本阶段标记为最终验收完成。
+验收：没有空契约、没有 Schema 命名冲突、文档链接有效。当前仓库已按 [`Phase 0 implementation plan`](superpowers/plans/2026-09-14-phase-0-contract-foundation.md) 完成本阶段产出与本地验收；这不代表 Phase 1～3 已实现。
 
 ### Phase 1：基础纵切
 

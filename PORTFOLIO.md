@@ -3,7 +3,7 @@
 > 本文件用于管理简历素材和面试叙事，不是系统设计文档。
 >
 > 文档版本：v2.0
-> 当前结论：Phase 0 契约基线已落地、最终验收进行中；完整项目尚未完成
+> 当前结论：Phase 0 契约基线已落地并通过本地验收；完整项目尚未完成
 > 开发约束：[`AGENTS.md`](AGENTS.md) · 设计：[`docs/architecture.md`](docs/architecture.md)
 
 ---

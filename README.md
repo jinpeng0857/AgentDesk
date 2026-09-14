@@ -90,7 +90,7 @@ Action 生成 PendingOperation
 
 ## 当前真实状态
 
-仓库已完成 Phase 0 的契约产出，正在执行最终验收；它仍不是完整可运行的业务应用。
+仓库已完成 Phase 0 的契约产出与本地验收；它仍不是完整可运行的业务应用。
 
 当前可以验证的内容：
 
@@ -114,7 +114,7 @@ Action 生成 PendingOperation
 | 20 条人工审核 Golden Cases | 完成 |
 | 依赖、锁文件与基础设施 Compose | 完成 |
 | 主文档同步 | 完成 |
-| 最终验收门禁 | 进行中 |
+| 最终验收门禁 | 完成 |
 
 Phase 0 只建立后续开发必须遵守的契约基线，不代表 Phase 1～3 的业务实现已经完成。
 
@@ -277,7 +277,7 @@ docker compose up --build
 
 ## 开发路线
 
-1. **Phase 0 — 契约闭合（最终验收中）**：Agent/Tool/OpenAPI 契约、20 条人工审核 Golden Cases、依赖与基础设施 Compose。
+1. **Phase 0 — 契约闭合（完成）**：Agent/Tool/OpenAPI 契约、20 条人工审核 Golden Cases、依赖与基础设施 Compose。
 2. **Phase 1 — 基础纵切**：JWT、PostgreSQL、Redis/ARQ、模型适配、只读 Agent 路径、基础页面。
 3. **Phase 2 — 治理与 HITL**：写 Tool、Policy、幂等账本、审批、interrupt/resume、八类失败模式。
 4. **Phase 3 — 评估与展示**：完整数据集、Live Eval、CI、Trace/Eval 页面、部署与备份。

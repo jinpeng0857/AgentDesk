@@ -1,0 +1,1427 @@
+{
+  "components": {
+    "schemas": {
+      "ActorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "requester",
+              "approver"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role"
+        ],
+        "title": "ActorResponse",
+        "type": "object"
+      },
+      "ApprovalDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "version"
+        ],
+        "title": "ApprovalDecisionRequest",
+        "type": "object"
+      },
+      "ApprovalDecisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 2.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approval_id",
+          "status",
+          "version"
+        ],
+        "title": "ApprovalDecisionResponse",
+        "type": "object"
+      },
+      "ApprovalDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "args_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Args Hash",
+            "type": "string"
+          },
+          "args_summary": {
+            "items": {
+              "$ref": "#/components/schemas/RedactedArgument"
+            },
+            "title": "Args Summary",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "risk_level": {
+            "$ref": "#/components/schemas/RiskLevel"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approval_id",
+          "ticket_id",
+          "operation_id",
+          "tool_name",
+          "risk_level",
+          "status",
+          "version",
+          "created_at",
+          "expires_at",
+          "args_hash",
+          "args_summary",
+          "reason_code"
+        ],
+        "title": "ApprovalDetailResponse",
+        "type": "object"
+      },
+      "ApprovalStatus": {
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "expired"
+        ],
+        "title": "ApprovalStatus",
+        "type": "string"
+      },
+      "ApprovalSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "risk_level": {
+            "$ref": "#/components/schemas/RiskLevel"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approval_id",
+          "ticket_id",
+          "operation_id",
+          "tool_name",
+          "risk_level",
+          "status",
+          "version",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "ApprovalSummaryResponse",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[A-Z][A-Z0-9_]+$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvalMetricResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "unit"
+        ],
+        "title": "EvalMetricResponse",
+        "type": "object"
+      },
+      "EvalRunDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_version": {
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "title": "Dataset Version",
+            "type": "string"
+          },
+          "git_sha": {
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Git Sha",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/EvalMetricResponse"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "offline",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_versions": {
+            "additionalProperties": {
+              "pattern": "^\\d+\\.\\d+\\.\\d+$",
+              "type": "string"
+            },
+            "title": "Prompt Versions",
+            "type": "object"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "mode",
+          "dataset_version",
+          "git_sha",
+          "created_at",
+          "model",
+          "prompt_versions",
+          "metrics"
+        ],
+        "title": "EvalRunDetailResponse",
+        "type": "object"
+      },
+      "EvalRunSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_version": {
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "title": "Dataset Version",
+            "type": "string"
+          },
+          "git_sha": {
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Git Sha",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "offline",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "mode",
+          "dataset_version",
+          "git_sha",
+          "created_at"
+        ],
+        "title": "EvalRunSummaryResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "ok",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "Intent": {
+        "enum": [
+          "network",
+          "account",
+          "permission",
+          "query",
+          "high_risk"
+        ],
+        "title": "Intent",
+        "type": "string"
+      },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "format": "password",
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "username": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "RedactedArgument": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "RedactedArgument",
+        "type": "object"
+      },
+      "RiskLevel": {
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "RiskLevel",
+        "type": "string"
+      },
+      "TicketAcceptedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "trace_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "trace_id",
+          "status"
+        ],
+        "title": "TicketAcceptedResponse",
+        "type": "object"
+      },
+      "TicketCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "user_query": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "User Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_query"
+        ],
+        "title": "TicketCreateRequest",
+        "type": "object"
+      },
+      "TicketDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "final_response": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Response"
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Intent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requester_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requester Id",
+            "type": "string"
+          },
+          "resolution_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "automated",
+                  "fallback",
+                  "human_required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Mode"
+          },
+          "risk_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketStatus"
+          },
+          "ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "status",
+          "intent",
+          "risk_level",
+          "updated_at",
+          "requester_id",
+          "resolution_mode",
+          "final_response"
+        ],
+        "title": "TicketDetailResponse",
+        "type": "object"
+      },
+      "TicketStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "waiting_approval",
+          "resolved",
+          "escalated",
+          "rejected",
+          "failed",
+          "expired"
+        ],
+        "title": "TicketStatus",
+        "type": "string"
+      },
+      "TicketSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "intent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Intent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "risk_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketStatus"
+          },
+          "ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "status",
+          "intent",
+          "risk_level",
+          "updated_at"
+        ],
+        "title": "TicketSummaryResponse",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "access_token": {
+            "minLength": 1,
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in_s": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expires In S",
+            "type": "integer"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in_s"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "TraceEventResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "enum": [
+              "supervisor",
+              "knowledge",
+              "action",
+              "policy",
+              "approval",
+              "dispatcher"
+            ],
+            "title": "Actor",
+            "type": "string"
+          },
+          "event_type": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Event Type",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "ticket_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "trace_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "ticket_id",
+          "trace_id",
+          "actor",
+          "event_type",
+          "summary",
+          "timestamp"
+        ],
+        "title": "TraceEventResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Contract-only API. Business execution starts in Phase 1.",
+    "title": "AgentDesk API",
+    "version": "0.2.0-draft"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/approvals": {
+      "get": {
+        "operationId": "list_approvals_api_approvals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalSummaryResponse"
+                  },
+                  "title": "Response List Approvals Api Approvals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "List Approvals",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/approvals/{approval_id}": {
+      "get": {
+        "operationId": "get_approval_api_approvals__approval_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Get Approval",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/approvals/{approval_id}/decision": {
+      "post": {
+        "operationId": "decide_approval_api_approvals__approval_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Decide Approval",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "current_actor_api_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Current Actor",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/eval/runs": {
+      "get": {
+        "operationId": "list_eval_runs_api_eval_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvalRunSummaryResponse"
+                  },
+                  "title": "Response List Eval Runs Api Eval Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "List Eval Runs",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/api/eval/runs/{run_id}": {
+      "get": {
+        "operationId": "get_eval_run_api_eval_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Get Eval Run",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/api/tickets": {
+      "get": {
+        "operationId": "list_tickets_api_tickets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketSummaryResponse"
+                  },
+                  "title": "Response List Tickets Api Tickets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "List Tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "post": {
+        "operationId": "create_ticket_api_tickets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Create Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{ticket_id}": {
+      "get": {
+        "operationId": "get_ticket_api_tickets__ticket_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Get Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{ticket_id}/trace": {
+      "get": {
+        "operationId": "get_ticket_trace_api_tickets__ticket_id__trace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TraceEventResponse"
+                  },
+                  "title": "Response Get Ticket Trace Api Tickets  Ticket Id  Trace Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Contract only"
+          }
+        },
+        "summary": "Get Ticket Trace",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "readiness_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Dependencies not ready"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "x-agentdesk-status": "contract-only"
+}

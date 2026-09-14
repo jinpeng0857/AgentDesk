@@ -50,8 +50,8 @@
 - [x] Task 5 — Agent/Prompt 契约提交 dcf1773。
 - [x] Task 6 — OpenAPI/TypeScript 契约提交 c9e4766。
 - [x] Task 7 — 20 条样例已由仓库所有者人工审核。
-- [ ] Task 8 — 正在执行。
-- [ ] Task 9 — 等待 Task 8 完成。
+- [x] Task 8 — PostgreSQL/Redis 固定镜像已拉取并健康启动，容器已关闭且卷保留。
+- [ ] Task 9 — 正在执行。
 - [ ] Task 10 — 等待最终验收。
 
 ---

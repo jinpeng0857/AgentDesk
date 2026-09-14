@@ -4,6 +4,8 @@ import ast
 from collections.abc import Iterable
 from pathlib import Path
 
+import yaml
+
 FORBIDDEN_ROOTS = {"backend", "fastapi", "sqlalchemy", "redis", "arq"}
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -50,3 +52,20 @@ def test_domain_layers_do_not_import_service_or_infrastructure() -> None:
     domain_roots = tuple(REPOSITORY_ROOT / name for name in ("agents", "tools", "skills"))
 
     assert scan_import_roots(domain_roots, FORBIDDEN_ROOTS) == []
+
+
+def test_phase_zero_compose_has_only_healthy_versioned_infrastructure() -> None:
+    compose_path = REPOSITORY_ROOT / "docker-compose.yml"
+    compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    services = compose["services"]
+
+    assert set(services) == {"postgres", "redis"}
+    for service in services.values():
+        assert service["image"]
+        assert not service["image"].endswith(":latest")
+        assert service["healthcheck"]["test"]
+        assert "build" not in service
+
+    postgres = services["postgres"]
+    assert "postgres_data:/var/lib/postgresql/data" in postgres["volumes"]
+    assert "postgres_data" in compose["volumes"]

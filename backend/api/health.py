@@ -36,7 +36,10 @@ async def readiness(request: Request, session: SessionDep) -> HealthResponse:
 
     try:
         await session.execute(text("select 1"))
-    except SQLAlchemyError:
+    except (SQLAlchemyError, OSError, TimeoutError):
+        # An unreachable host surfaces as a driver timeout or OSError rather than
+        # a SQLAlchemyError, and readiness must still answer 503 instead of
+        # crashing with an unhandled exception.
         raise_not_ready("PostgreSQL is not reachable")
 
     redis = getattr(request.app.state, "redis", None)

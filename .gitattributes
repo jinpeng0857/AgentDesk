@@ -1,1 +1,6 @@
 AGENTS.md whitespace=-trailing-space
+
+# openapi-typescript writes LF. Store and check out LF so the documented
+# `npm run generate:api-types` step leaves a clean working tree on Windows,
+# where core.autocrlf=true would otherwise report the file as modified.
+*.d.ts text eol=lf

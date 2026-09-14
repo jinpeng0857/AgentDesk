@@ -1,0 +1,29 @@
+version: "1.0.0"
+agent_id: action
+input_models:
+  - TicketState
+output_models:
+  - ActionProposal
+  - PendingOperation
+  - ToolResult
+allowed_tools:
+  - query_user
+  - query_order
+  - check_service
+  - create_ticket
+  - request_access
+  - reset_password
+  - process_refund
+state_writes:
+  - pending_operation
+  - tool_results
+invariants:
+  - Action selects only an allowed Tool.
+  - Action never executes a write before Policy.
+  - Model output never supplies operation_id or args_hash.
+  - Approved operation arguments never change during resume.
+failure_codes:
+  - MODEL_OUTPUT_INVALID
+  - TOOL_NOT_ALLOWED
+  - TOOL_ARGS_INVALID
+  - TOOL_EXECUTION_FAILED

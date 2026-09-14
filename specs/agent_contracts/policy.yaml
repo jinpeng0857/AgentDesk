@@ -1,0 +1,21 @@
+version: "1.0.0"
+agent_id: policy
+input_models:
+  - PendingOperation
+  - ActorContext
+  - ResourceContext
+output_models:
+  - RiskDecision
+  - PolicyExplanation
+allowed_tools: []
+state_writes:
+  - risk_decision
+invariants:
+  - Deterministic rules produce every final Policy field.
+  - A model may render explanation only after the decision exists.
+  - High risk always requires human approval.
+  - Unknown or unauthorized operations are denied.
+failure_codes:
+  - POLICY_DENIED
+  - APPROVAL_REQUIRED
+  - POLICY_CONTEXT_INVALID

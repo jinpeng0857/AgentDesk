@@ -1,0 +1,21 @@
+version: "1.0.0"
+agent_id: supervisor
+input_models:
+  - TicketState
+output_models:
+  - SupervisorOutput
+allowed_tools: []
+state_writes:
+  - intent
+  - routing_decision
+  - resolution_mode
+  - final_response
+invariants:
+  - Supervisor never calls a Tool.
+  - Supervisor never assigns final risk or approval.
+  - Confidence below 0.7 always escalates.
+  - Dispatcher validates every suggested transition.
+failure_codes:
+  - MODEL_OUTPUT_INVALID
+  - LOW_CONFIDENCE
+  - INVALID_ROUTE

@@ -714,6 +714,8 @@ verify_authenticated_actor
 
 ### 11.2 API
 
+Phase 0 已将下列 13 个操作发布为 OpenAPI 契约，并生成前端 TypeScript 类型。当前仅 `/health` 返回存活结果；`/ready` 在 PostgreSQL、Redis 和配置尚未接入 API 时返回 503，其余业务端点返回稳定的 501 契约错误。表中描述的是后续阶段必须实现的业务语义，路由存在不等于功能已经完成。
+
 认证：
 
 | 方法 | 路径 | 说明 |
@@ -1055,6 +1057,8 @@ API 类型只来自 OpenAPI。JWT 默认保存在内存；刷新页面可重新�
 
 ### 17.1 默认 Compose
 
+完整应用的目标 Compose 包含：
+
 ```text
 frontend
 api
@@ -1062,6 +1066,8 @@ worker
 postgres
 redis
 ```
+
+Phase 0 仓库中的 Compose 只包含固定版本的 PostgreSQL 与 Redis，并已验证两个服务能达到 healthy。`frontend`、`api`、`worker`、Chroma 持久卷和 Nginx 属于后续阶段交付，不得把当前基础设施验证称为完整应用部署。
 
 Chroma 由单 Worker 使用 persistent volume。默认不包含完整 Langfuse 自托管栈；配置外部 `LANGFUSE_HOST` 时启用导出。
 
@@ -1218,7 +1224,7 @@ AgentDesk/
 - 20 条人工 Golden Cases；
 - pyproject、前端依赖和 Compose 目标依赖确定。
 
-验收：没有空契约、没有 Schema 命名冲突、文档链接有效。当前仓库尚未完成本阶段。
+验收：没有空契约、没有 Schema 命名冲突、文档链接有效。当前仓库已完成本阶段产出，最终门禁正在按 [`Phase 0 implementation plan`](superpowers/plans/2026-09-14-phase-0-contract-foundation.md) 执行；通过前不把本阶段标记为最终验收完成。
 
 ### Phase 1：基础纵切
 

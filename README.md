@@ -90,32 +90,33 @@ Action 生成 PendingOperation
 
 ## 当前真实状态
 
-仓库目前是 Phase 0 的文档和目录骨架，不是可运行应用：
+仓库已完成 Phase 0 的契约产出，正在执行最终验收；它仍不是完整可运行的业务应用。
 
-- `agents/`、`backend/`、`tools/`、`skills/`、`tests/` 和大部分前端文件仍为空占位；
-- `specs/agent_contracts/*.yaml` 尚未填写；
-- `specs/tool_schemas/tools.json` 尚无 Tool；
-- `eval/golden_dataset.json` 尚无 Golden Case；
-- `backend/main.py` 尚未定义 FastAPI app；
-- 前端依赖和页面尚未初始化；
-- Dockerfile 尚不存在，当前 Compose 不能构建；
-- 当前目录尚未初始化 Git。
+当前可以验证的内容：
 
-因此下面这些能力**尚不能宣称已完成**：Agent 工作流、工具治理、审批恢复、JWT、Worker、测试、评估指标、前端页面和一键部署。
+- Git 仓库、隔离开发分支、Python/前端锁文件和基础质量配置已建立；
+- 四份 Agent contract 与四份 Prompt 已填写并可由脚本校验；
+- 八个 Tool 的 Pydantic v2 模型、Registry、白名单和生成式 JSON Schema 已落库；
+- FastAPI 暴露 13 个 Phase 0 接口契约，OpenAPI 与前端 TypeScript 类型均由代码生成；
+- `eval/golden_dataset.json` 包含 20 条已人工确认标签的冒烟评估样本；
+- Docker Compose 当前只提供 PostgreSQL 与 Redis，两个基础设施服务已做健康启动验证。
+
+仍未实现的是 Agent 行为、LangGraph、Worker、数据库表与 migration、JWT、写操作执行网关、审批恢复、业务 Tool 实现、前端页面、评估指标与 CI。因此不得把契约端点的存在描述为业务能力已经完成，也不得宣称完整应用可以一键部署。
 
 ### Phase 0 状态
 
 | 任务 | 状态 |
 |---|---|
 | 需求分析与 v2 架构决策 | 完成 |
-| `AGENTS.md` / architecture / README / PORTFOLIO 一致化 | 完成 |
-| Agent contracts | 待做 |
-| 八个 Tool Schema | 待做 |
-| OpenAPI 草案 | 待做 |
-| 20 条人工 Golden Cases | 待做 |
-| 依赖、锁文件和 Compose 更新 | 待做 |
+| Agent contracts 与 Prompt | 完成 |
+| 八个 Tool Schema 与白名单 | 完成 |
+| OpenAPI 草案与前端生成类型 | 完成 |
+| 20 条人工审核 Golden Cases | 完成 |
+| 依赖、锁文件与基础设施 Compose | 完成 |
+| 主文档同步 | 完成 |
+| 最终验收门禁 | 进行中 |
 
-Phase 0 只有在机器契约和初始数据集补齐后才算完成。
+Phase 0 只建立后续开发必须遵守的契约基线，不代表 Phase 1～3 的业务实现已经完成。
 
 ---
 
@@ -148,9 +149,9 @@ high_risk
 
 ---
 
-## 计划 API
+## API 契约
 
-当前接口尚未实现；下表是 v2 契约目标。
+下表中的路由和请求/响应模型已经进入 OpenAPI。Phase 0 仅实现契约外壳：`/health` 返回存活状态，`/ready` 在依赖未接入时返回 503，其余业务端点稳定返回 501；真实认证、持久化、入队和查询在后续阶段实现。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -188,7 +189,7 @@ OpenAPI 是前后端接口唯一来源。前端类型通过 `openapi-typescript`
 
 ## 配置约定
 
-实现阶段必须提供 `.env.example`：
+仓库已提供 `.env.example`，列出以下配置项；复制后必须替换占位密钥：
 
 ```text
 APP_ENV
@@ -215,45 +216,51 @@ Langfuse 配置为可选项。任何密钥、Token 和临时口令都不能进�
 
 ### 当前阶段
 
-当前还没有可启动的应用。请先阅读：
+当前可运行契约校验和 PostgreSQL/Redis 基础设施；完整应用尚不可启动。请先阅读：
 
 1. [AGENTS.md](AGENTS.md)：开发契约；
 2. [docs/architecture.md](docs/architecture.md)：完整设计；
 3. [specs/README.md](specs/README.md)：机器契约索引；
 4. [PORTFOLIO.md](PORTFOLIO.md)：证据与简历纪律。
 
-### 目标状态命令
+### Phase 0 验证
 
-以下命令只在对应实现完成后才有效，当前不得把预期结果写成“已通过”：
+安装锁定依赖并检查契约：
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up --build
-```
-
-目标地址：
-
-```text
-Frontend  http://localhost:8080
-API       http://localhost:8000
-OpenAPI   http://localhost:8000/docs
-```
-
-目标验证命令：
-
-```powershell
-ruff check agents tools skills backend eval tests
-mypy agents tools skills backend eval
-pytest tests -q
-python eval/run_eval.py --mode offline
+uv sync --all-groups
+uv run ruff check agents tools backend eval scripts tests/unit
+uv run mypy agents tools backend eval scripts
+uv run pytest tests/unit -q
+uv run python scripts/export_tool_schemas.py --check
+uv run python scripts/export_openapi.py --check
+uv run python scripts/validate_agent_contracts.py
+uv run python scripts/validate_golden_dataset.py
 
 Set-Location frontend
 npm ci
-npm run lint
+npm run generate:api-types
 npm run type-check
-npm run test
-npm run build
 ```
+
+启动当前基础设施：
+
+```powershell
+docker compose up -d postgres redis
+docker compose ps
+docker compose down
+```
+
+### 完整应用目标
+
+以下命令和地址只有在 Phase 1～3 对应实现完成后才有效，当前不得描述为“已通过”：
+
+```powershell
+docker compose up --build
+```
+
+目标地址：Frontend `http://localhost:8080`、API `http://localhost:8000`、OpenAPI `http://localhost:8000/docs`。
 
 ---
 
@@ -270,7 +277,7 @@ npm run build
 
 ## 开发路线
 
-1. **Phase 0 — 契约闭合**：Agent/Tool/OpenAPI 契约、20 条 Golden Cases、依赖与 Compose。
+1. **Phase 0 — 契约闭合（最终验收中）**：Agent/Tool/OpenAPI 契约、20 条人工审核 Golden Cases、依赖与基础设施 Compose。
 2. **Phase 1 — 基础纵切**：JWT、PostgreSQL、Redis/ARQ、模型适配、只读 Agent 路径、基础页面。
 3. **Phase 2 — 治理与 HITL**：写 Tool、Policy、幂等账本、审批、interrupt/resume、八类失败模式。
 4. **Phase 3 — 评估与展示**：完整数据集、Live Eval、CI、Trace/Eval 页面、部署与备份。

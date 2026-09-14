@@ -3,7 +3,7 @@
 > 本文件用于管理简历素材和面试叙事，不是系统设计文档。
 >
 > 文档版本：v2.0
-> 当前结论：项目尚未完成，不得以完成时写入简历
+> 当前结论：Phase 0 契约基线已落地、最终验收进行中；完整项目尚未完成
 > 开发约束：[`AGENTS.md`](AGENTS.md) · 设计：[`docs/architecture.md`](docs/architecture.md)
 
 ---
@@ -24,7 +24,7 @@
 
 ## 2. 当前可验证状态
 
-截至 v2.0 文档重构：
+截至 Phase 0 契约闭合：
 
 ### 已完成
 
@@ -32,20 +32,25 @@
 - 完成四角色权限边界、确定性 Dispatcher、高风险审批和独立 Worker 的系统设计。
 - 确定 OpenAI-compatible 模型接口、PostgreSQL 持久化、Redis/ARQ 队列和 Chroma 检索方案。
 - 定义 Tool Governance、状态所有权、失败模式、Evaluation 与 CI 门禁。
-- 建立五份主文档的职责边界。
+- 建立 Pydantic v2 领域契约、八个 Tool Schema、封闭 Registry 和按角色白名单。
+- 填写四份 Agent contract 与 Prompt，并提供契约校验脚本。
+- 从 FastAPI 代码导出 OpenAPI，再生成前端 TypeScript API 类型。
+- 建立 20 条人工确认标签的冒烟评估数据，覆盖五类 intent 和八个 Tool。
+- 锁定 Python 与前端依赖；PostgreSQL、Redis Compose 服务已通过健康启动检查。
+- 初始化 Git，并以独立功能分支保留可审查的 Phase 0 提交历史。
 
 ### 尚未完成
 
-- Agent、Tool、Graph、Policy、Worker 和 API 实现；
+- Agent 行为、业务 Tool、Graph、Policy、Worker 和 API 业务实现；
 - PostgreSQL Schema 和 Alembic migrations；
 - JWT 身份与审批接口；
 - 前端页面；
-- 自动化测试和失败注入；
-- Golden Dataset、baseline 和任何实测指标；
-- Docker Compose 可运行栈；
-- Git 初始化和 CI 实际运行记录。
+- E2E、集成测试和确定性失败注入；
+- 完整 80 条 Golden Dataset、baseline、Live Eval 和任何可发布实测指标；
+- 包含 frontend/api/worker 的完整 Docker Compose 可运行栈；
+- 三个 CI 工作流及其实际运行记录。
 
-因此当前最多可以把 AgentDesk 描述为“正在开发的个人工程项目”，不能写成“设计并实现了完整系统”。
+因此当前可以展示为“已完成契约基线、正在开发业务纵切的个人工程项目”，不能写成“设计并实现了完整系统”。
 
 ---
 
@@ -55,12 +60,12 @@
 |---|---|---|
 | 多 Agent 编排 | 可运行图、路由测试、真实 Trace | 未满足 |
 | 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | 未满足 |
-| Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | 未满足 |
+| Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | 部分满足：Registry、白名单和 Schema 已有 |
 | Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | 未满足 |
 | RAG | 可回查引用、检索评估产物 | 未满足 |
-| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 未满足 |
-| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 未满足 |
-| 部署 | Compose 构建、健康检查、备份恢复演练 | 未满足 |
+| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核冒烟样本已提交 |
+| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：OpenAPI 生成类型已提交 |
+| 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证 |
 | 量化指标 | 可下载 eval artifact + Git SHA | 未满足 |
 
 当某行证据全部存在后，才能新增对应完成时 bullet。不能先写 bullet 再等待实现追上文案。

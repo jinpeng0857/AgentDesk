@@ -1,38 +1,75 @@
 # Specs Index — 契约索引与冻结决策
 
-> 本目录存放**与实现强一致的契约**（Agent 契约、工具 Schema），本文件只做索引与冻结决策记录，**不承载方案内容**。
+> 本目录存放与实现强一致的 Agent、Tool 和 API 契约。本文件只负责索引、来源和生成规则，不重复承载系统方案。
 >
-> 版本：v1.0（冻结版）
-> 完整方案：[`docs/architecture.md`](../docs/architecture.md) · 开发约束：[`AGENTS.md`](../AGENTS.md)（唯一真源） · 项目表达：[`PORTFOLIO.md`](../PORTFOLIO.md)
->
-> 文档导航以 [`AGENTS.md` §0](../AGENTS.md) 为唯一来源，此处不重复维护清单。
+> 版本：v2.0
+> 完整方案：[`docs/architecture.md`](../docs/architecture.md) · 开发约束：[`AGENTS.md`](../AGENTS.md)（最高优先级） · 项目证据：[`PORTFOLIO.md`](../PORTFOLIO.md)
 
 ---
 
 ## 1. 冻结决策清单
 
-以下 7 条是架构层面的**不可协商决策**，实现时不得偏离；如需变更，先改 [`docs/architecture.md` §5.3](../docs/architecture.md) 与 [`AGENTS.md` §2](../AGENTS.md)，再改代码。
+以下决策不得由实现静默改变。如需调整，必须先按 [`AGENTS.md` §8](../AGENTS.md) 完成契约与文档同步；涉及硬约束时还需人工确认修改 `AGENTS.md`。
 
 | 编号 | 决策 | 对应硬约束 | 方案出处 |
 |---|---|---|---|
-| D-01 | 路由由确定性代码完成，Supervisor 只产出结构化 `RoutingDecision`，Dispatcher 按 `next_agent` 分支；路由环节不调用 LLM | H-04 | [`docs/architecture.md` §5.3](../docs/architecture.md) |
-| D-02 | 状态写入权限隔离：每个节点只写自己负责的 `TicketState` 字段 | H-03 | [`docs/architecture.md` §6](../docs/architecture.md)、[`AGENTS.md` §2.1](../AGENTS.md) |
-| D-03 | 每工单最大 15 步，超限强制升级人工 | H-07 | [`docs/architecture.md` §13.4](../docs/architecture.md) |
-| D-04 | Checkpointer 在每个节点执行后自动存档，支持从任意检查点恢复 | — | [`docs/architecture.md` §10.1](../docs/architecture.md) |
-| D-05 | 前后端通过 OpenAPI 契约对齐，前端类型必须由 `openapi-typescript` 生成 | H-10 | [`docs/architecture.md` §14.3](../docs/architecture.md) |
-| D-06 | Supervisor 不直接调用任何工具 | H-02 | [`docs/architecture.md` §7.2](../docs/architecture.md) |
-| D-07 | 领域层（`agents/`、`tools/`、`skills/`）与服务层（`backend/`）分离，依赖单向：服务层 → 领域层 | H-21 | [`docs/architecture.md` §5.1](../docs/architecture.md) |
+| D-01 | 路由由确定性 Dispatcher 校验和执行，Supervisor 只建议 `next_agent` | H-04 | [`docs/architecture.md` §5.4](../docs/architecture.md) |
+| D-02 | 每个节点只写自己拥有的 `TicketState` 字段 | H-03 | [`docs/architecture.md` §6.2](../docs/architecture.md)、[`AGENTS.md` §2.1](../AGENTS.md) |
+| D-03 | 每工单最大 15 步，超限后停止模型和工具调用并升级人工 | H-07 | [`docs/architecture.md` §13](../docs/architecture.md) |
+| D-04 | PostgreSQL 是 checkpoint、审批、审计和写操作账本的持久化事实源 | H-25 | [`docs/architecture.md` §10.1](../docs/architecture.md)、[`docs/architecture.md` §11](../docs/architecture.md) |
+| D-05 | OpenAPI 是前后端 API 类型唯一来源，前端 DTO 必须生成 | H-12 | [`docs/architecture.md` §11.2](../docs/architecture.md)、[`docs/architecture.md` §16.4](../docs/architecture.md) |
+| D-06 | Supervisor 永不调用 Tool | H-02 | [`docs/architecture.md` §7.1](../docs/architecture.md) |
+| D-07 | 依赖方向固定为 `backend → agents / tools / skills` | H-22 | [`docs/architecture.md` §5](../docs/architecture.md)、[`AGENTS.md` §2](../AGENTS.md) |
 
 ---
 
-## 2. 本目录文件与依据文档
+## 2. 契约文件与来源
 
-| 文件 | 内容 | 依据文档 |
+| 文件 | 内容 | 权威来源 |
 |---|---|---|
-| `agent_contracts/supervisor.yaml` | Supervisor 的输入、输出、决策边界 | [`docs/architecture.md` §7.2](../docs/architecture.md) |
-| `agent_contracts/knowledge.yaml` | Knowledge 的输入、输出、只读约束 | [`docs/architecture.md` §7.3](../docs/architecture.md) |
-| `agent_contracts/action.yaml` | Action 的工具白名单与幂等要求 | [`docs/architecture.md` §7.4](../docs/architecture.md) |
-| `agent_contracts/policy.yaml` | Policy 的风险判定规则与输出结构 | [`docs/architecture.md` §7.5](../docs/architecture.md) |
-| `tool_schemas/tools.json` | 8 个工具的完整 Schema | [`docs/architecture.md` §8](../docs/architecture.md) |
+| `agent_contracts/supervisor.yaml` | Supervisor 输入、输出和决策边界 | [`docs/architecture.md` §7.1](../docs/architecture.md)、`agents/schemas.py`、`prompts/supervisor.yaml` |
+| `agent_contracts/knowledge.yaml` | Knowledge 输入、输出和只读边界 | [`docs/architecture.md` §7.2](../docs/architecture.md)、`agents/schemas.py`、`prompts/knowledge.yaml` |
+| `agent_contracts/action.yaml` | Action propose/execute 边界和 Tool 白名单 | [`docs/architecture.md` §7.3](../docs/architecture.md)、`agents/schemas.py`、`tools/registry.py`、`prompts/action.yaml` |
+| `agent_contracts/policy.yaml` | Policy 确定性判定边界 | [`docs/architecture.md` §7.4](../docs/architecture.md)、`agents/schemas.py`、`prompts/policy.yaml` |
+| `tool_schemas/tools.json` | 八个 Tool 的可检查 Schema 快照 | [`docs/architecture.md` §9](../docs/architecture.md)、`tools/registry.py`、`tools/schemas.py` |
+| `openapi/openapi.json` | Phase 0 API 契约快照 | [`docs/architecture.md` §11.2](../docs/architecture.md)、`backend/main.py`、`backend/api/` |
 
-**一致性要求**：契约文件与实现不一致即缺陷。工具或 Agent 输出结构发生变化时，必须同步本目录文件（见 [`AGENTS.md` §5.2 变更影响面自查清单](../AGENTS.md)）。
+`eval/golden_dataset.json` 位于 `eval/`，不属于本目录；它是人工审核的评估输入，不是由代码生成的接口契约。
+
+---
+
+## 3. 生成与校验
+
+以下 JSON 文件是生成物，不得手工修改：
+
+```powershell
+uv run python scripts/export_tool_schemas.py
+uv run python scripts/export_openapi.py
+
+Set-Location frontend
+npm run generate:api-types
+```
+
+提交前使用只读检查确认生成物没有漂移：
+
+```powershell
+uv run python scripts/export_tool_schemas.py --check
+uv run python scripts/export_openapi.py --check
+uv run python scripts/validate_agent_contracts.py
+uv run python scripts/validate_golden_dataset.py
+
+Set-Location frontend
+npm run generate:api-types
+npm run type-check
+```
+
+Agent contract 和 Prompt YAML 是人工维护的契约文件，由校验脚本检查字段、角色、白名单和绝对约束语言；它们不是自动生成物。
+
+---
+
+## 4. 一致性规则
+
+- Tool 名称、参数或返回结构变化时，同步 Registry、Schema 快照、白名单、测试和架构工具表。
+- Agent 输出变化时，同步 Pydantic 模型、Prompt、Agent contract、状态所有权和相关评估。
+- API 变化时，重新导出 OpenAPI，再生成 `frontend/src/types/api.d.ts`，不得手写 DTO。
+- 契约文件与实现不一致即缺陷；完整同步矩阵见 [`AGENTS.md` §8](../AGENTS.md)。

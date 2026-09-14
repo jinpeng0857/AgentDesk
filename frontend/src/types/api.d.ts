@@ -832,6 +832,15 @@ export interface operations {
                     "application/json": components["schemas"]["TicketAcceptedResponse"];
                 };
             };
+            /** @description Authentication failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -841,8 +850,8 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Contract only */
-            501: {
+            /** @description Runtime dependencies are not ready */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -970,7 +979,7 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
-            /** @description Dependencies not ready */
+            /** @description Dependencies are not ready */
             503: {
                 headers: {
                     [name: string]: unknown;

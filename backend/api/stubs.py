@@ -31,11 +31,12 @@ def raise_not_implemented() -> NoReturn:
     )
 
 
-def raise_not_ready() -> NoReturn:
+def raise_not_ready(message: str | None = None) -> NoReturn:
     raise ContractStubError(
         status_code=503,
         code="NOT_READY",
-        message="Runtime dependencies are introduced in Phase 1.",
+        message=message
+        or "Runtime dependencies are not ready for this endpoint.",
     )
 
 

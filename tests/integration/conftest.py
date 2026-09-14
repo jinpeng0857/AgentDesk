@@ -17,6 +17,8 @@ from pathlib import Path
 
 import asyncpg
 import pytest
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
@@ -32,6 +34,7 @@ from backend.auth.passwords import hash_password
 from backend.config import AppSettings
 from backend.db.models import UserRecord
 from backend.db.session import async_session_factory
+from backend.jobs.serialization import json_job_deserializer, json_job_serializer
 from backend.main import create_app
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -197,3 +200,40 @@ async def api_client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=api_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
+
+TEST_REDIS_URL = "redis://localhost:6379/15"
+
+
+@pytest.fixture
+async def redis_pool() -> AsyncIterator[ArqRedis]:
+    pool = await create_pool(
+        RedisSettings.from_dsn(TEST_REDIS_URL),
+        job_serializer=json_job_serializer,
+        job_deserializer=json_job_deserializer,
+    )
+    try:
+        await pool.flushdb()
+        yield pool
+    finally:
+        await pool.aclose()
+
+
+@pytest.fixture
+def login_headers() -> dict[str, str]:
+    """Placeholder replaced by :func:`authenticated_client` for real requests."""
+    return {}
+
+
+@pytest.fixture
+async def authenticated_client(
+    api_client: AsyncClient,
+) -> AsyncIterator[AsyncClient]:
+    login = await api_client.post(
+        "/api/auth/login",
+        json={"username": REQUESTER_USERNAME, "password": REQUESTER_PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+    api_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+    yield api_client
+    api_client.headers.pop("Authorization", None)

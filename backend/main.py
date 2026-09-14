@@ -11,6 +11,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from arq import create_pool
+from arq.connections import RedisSettings
 from fastapi import FastAPI
 
 from backend.api import approvals, auth, eval, health, tickets
@@ -19,6 +21,7 @@ from backend.api.stubs import ContractStubError, contract_stub_exception_handler
 from backend.auth.jwt import AuthenticationError
 from backend.config import AppSettings
 from backend.db.session import async_session_factory, create_async_engine_from_settings
+from backend.jobs.serialization import json_job_deserializer, json_job_serializer
 
 OPENAPI_STATUS = "phase-1-partial"
 
@@ -38,9 +41,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         engine = create_async_engine_from_settings(resolved)
         application.state.engine = engine
         application.state.session_factory = async_session_factory(engine)
+
+        redis = await create_pool(
+            RedisSettings.from_dsn(resolved.redis_url),
+            job_serializer=json_job_serializer,
+            job_deserializer=json_job_deserializer,
+        )
+        application.state.redis = redis
+
         try:
             yield
         finally:
+            await redis.aclose()
             await engine.dispose()
 
     application = AgentDeskFastAPI(
@@ -54,6 +66,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     application.state.settings = resolved
     application.state.session_factory = None
+    application.state.redis = None
 
     application.add_exception_handler(ApiError, api_error_handler)
     application.add_exception_handler(AuthenticationError, authentication_error_handler)

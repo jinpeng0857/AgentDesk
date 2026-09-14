@@ -1235,6 +1235,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication failed"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1245,7 +1255,7 @@
             },
             "description": "Validation Error"
           },
-          "501": {
+          "503": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1253,7 +1263,7 @@
                 }
               }
             },
-            "description": "Contract only"
+            "description": "Runtime dependencies are not ready"
           }
         },
         "summary": "Create Ticket",
@@ -1413,7 +1423,7 @@
                 }
               }
             },
-            "description": "Dependencies not ready"
+            "description": "Dependencies are not ready"
           }
         },
         "summary": "Readiness",

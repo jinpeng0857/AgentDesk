@@ -54,10 +54,11 @@ def test_ticket_creation_contract_is_async() -> None:
 
 def test_error_envelope_and_contract_status_are_published() -> None:
     schema = _openapi()
-    operation = schema["paths"]["/api/tickets"]["post"]
 
     assert "ErrorEnvelope" in schema["components"]["schemas"]
-    assert "501" in operation["responses"]
+    assert "501" in schema["paths"]["/api/approvals"]["get"]["responses"]
+    assert "501" not in schema["paths"]["/api/tickets"]["post"]["responses"]
+    assert "202" in schema["paths"]["/api/tickets"]["post"]["responses"]
     assert schema["x-agentdesk-status"] == "phase-1-partial"
 
 
@@ -90,10 +91,11 @@ def test_approval_decision_requires_version_and_cannot_edit_arguments() -> None:
     assert set(schema["properties"]) == {"decision", "version", "reason"}
 
 
-async def test_health_is_live_but_business_routes_are_explicit_stubs() -> None:
+async def test_health_is_live_and_unimplemented_routes_are_explicit_stubs() -> None:
     transport = ASGITransport(app=_app())
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         health = await client.get("/health")
+        approval = await client.get("/api/approvals")
         ticket = await client.post(
             "/api/tickets",
             json={"user_query": "VPN is unavailable"},
@@ -101,5 +103,10 @@ async def test_health_is_live_but_business_routes_are_explicit_stubs() -> None:
 
     assert health.status_code == 200
     assert health.json() == {"status": "ok"}
-    assert ticket.status_code == 501
-    assert ticket.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    assert approval.status_code == 501
+    assert approval.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    # Ticket submission is real now. This app instance has no lifespan, so the
+    # session factory is absent and the request fails as not-ready rather than
+    # reaching the authentication check.
+    assert ticket.status_code == 503
+    assert ticket.json()["error"]["code"] == "NOT_READY"

@@ -17,7 +17,6 @@ from backend.integrations.tool_adapters import (
     SqlUserRepository,
     WriteCapabilityDisabled,
 )
-from scripts.seed_demo_data import seed_orders, seed_services, seed_users
 from tools.schemas import (
     AccountStatus,
     CheckServiceArgs,
@@ -29,18 +28,6 @@ from tools.schemas import (
     ResetPasswordArgs,
     ServiceStatus,
 )
-
-
-@pytest.fixture
-async def seeded_demo_data(
-    session_factory: async_sessionmaker[AsyncSession],
-    seeded_users: None,
-) -> None:
-    async with session_factory() as session:
-        await seed_users(session)
-        await seed_orders(session)
-        await seed_services(session)
-        await session.commit()
 
 
 async def test_query_user_reports_status_and_masked_email(

@@ -36,6 +36,7 @@ from backend.db.models import UserRecord
 from backend.db.session import async_session_factory
 from backend.jobs.serialization import json_job_deserializer, json_job_serializer
 from backend.main import create_app
+from scripts.seed_demo_data import seed_orders, seed_services, seed_users
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TEST_DATABASE_URL = (
@@ -237,3 +238,16 @@ async def authenticated_client(
     api_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
     yield api_client
     api_client.headers.pop("Authorization", None)
+
+
+@pytest.fixture
+async def seeded_demo_data(
+    session_factory: async_sessionmaker[AsyncSession],
+    seeded_users: None,
+) -> None:
+    """Reference data (identities, orders, service states) for adapter tests."""
+    async with session_factory() as session:
+        await seed_users(session)
+        await seed_orders(session)
+        await seed_services(session)
+        await session.commit()

@@ -58,7 +58,23 @@ def test_error_envelope_and_contract_status_are_published() -> None:
 
     assert "ErrorEnvelope" in schema["components"]["schemas"]
     assert "501" in operation["responses"]
-    assert schema["x-agentdesk-status"] == "contract-only"
+    assert schema["x-agentdesk-status"] == "phase-1-partial"
+
+
+def test_auth_is_real_while_approvals_and_eval_remain_stubs() -> None:
+    schema = _openapi()
+
+    for path, method in (("/api/auth/login", "post"), ("/api/auth/me", "get")):
+        assert "501" not in schema["paths"][path][method]["responses"], path
+
+    for path, method in (
+        ("/api/approvals", "get"),
+        ("/api/approvals/{approval_id}", "get"),
+        ("/api/approvals/{approval_id}/decision", "post"),
+        ("/api/eval/runs", "get"),
+        ("/api/eval/runs/{run_id}", "get"),
+    ):
+        assert "501" in schema["paths"][path][method]["responses"], path
 
 
 def test_ticket_requester_identity_cannot_be_supplied_by_client() -> None:

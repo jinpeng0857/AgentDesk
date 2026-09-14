@@ -854,9 +854,9 @@
     }
   },
   "info": {
-    "description": "Contract-only API. Business execution starts in Phase 1.",
+    "description": "AgentDesk phase 1 read-only slice. Business write tools remain disabled until phase 2.",
     "title": "AgentDesk API",
-    "version": "0.2.0-draft"
+    "version": "0.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1033,6 +1033,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication failed"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1042,16 +1052,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Contract only"
           }
         },
         "summary": "Login",
@@ -1074,7 +1074,7 @@
             },
             "description": "Successful Response"
           },
-          "501": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1082,7 +1082,7 @@
                 }
               }
             },
-            "description": "Contract only"
+            "description": "Authentication failed"
           }
         },
         "summary": "Current Actor",
@@ -1423,5 +1423,5 @@
       }
     }
   },
-  "x-agentdesk-status": "contract-only"
+  "x-agentdesk-status": "phase-1-partial"
 }

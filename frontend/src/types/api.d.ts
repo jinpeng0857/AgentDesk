@@ -663,6 +663,15 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
+            /** @description Authentication failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -670,15 +679,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Contract only */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -701,8 +701,8 @@ export interface operations {
                     "application/json": components["schemas"]["ActorResponse"];
                 };
             };
-            /** @description Contract only */
-            501: {
+            /** @description Authentication failed */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

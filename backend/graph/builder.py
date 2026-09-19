@@ -20,6 +20,7 @@ from backend.graph.nodes import (
     make_action_execute_node,
     make_action_propose_node,
     make_approval_node,
+    make_dispatch_action_execute_node,
     make_dispatch_node,
     make_dispatch_policy_node,
     make_knowledge_node,
@@ -65,9 +66,7 @@ def build_ticket_graph(
     workflow.add_node("action_execute", make_action_execute_node(context))
     workflow.add_node(
         "dispatch_action_execute",
-        make_dispatch_node(
-            "action", "execute_operation", next_status=TicketStatus.RESOLVED
-        ),
+        make_dispatch_action_execute_node(),
     )
 
     workflow.add_node(

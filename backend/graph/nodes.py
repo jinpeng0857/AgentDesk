@@ -400,3 +400,37 @@ def make_action_execute_node(context: GraphContext) -> AsyncNode:
         return updates
 
     return action_execute_node
+
+
+def make_dispatch_action_execute_node() -> SyncNode:
+    def dispatch_action_execute_node(state: TicketState) -> dict[str, Any]:
+        tool_results = state.get("tool_results", [])
+        last_result = tool_results[-1] if tool_results else None
+        if last_result is not None and str(last_result.outcome) in (
+            "timed_out",
+            "failed_final",
+            "rejected",
+            ToolOutcome.TIMED_OUT,
+            ToolOutcome.FAILED_FINAL,
+            ToolOutcome.REJECTED,
+        ):
+            next_status = TicketStatus.ESCALATED
+        else:
+            next_status = TicketStatus.RESOLVED
+
+        next_state = advance_dispatch(
+            state,
+            actor="action",
+            action="execute_operation",
+            next_status=next_status,
+        )
+        updates = {
+            "step_count": next_state["step_count"],
+            "agent_history": next_state["agent_history"],
+            "status": next_state["status"],
+        }
+        validate_node_output_keys("dispatcher", updates)
+        return updates
+
+    return dispatch_action_execute_node
+

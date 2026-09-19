@@ -78,6 +78,7 @@ ERROR_CONCURRENT_EXECUTION = "CONCURRENT_EXECUTION"
 ERROR_TIMEOUT = "TOOL_TIMEOUT"
 ERROR_EXECUTION = "TOOL_EXECUTION_FAILED"
 ERROR_INVALID_RESULT = "INVALID_TOOL_RESULT"
+MAX_TOOL_ATTEMPTS: int = 3
 
 
 @dataclass(frozen=True)
@@ -150,40 +151,65 @@ class ReadToolExecutor:
                 request_id, agent_id, tool_name, raw_args, ERROR_INVALID_ARGUMENTS, started
             )
 
-        try:
-            async with asyncio.timeout(spec.timeout_s):
-                produced = await self._dispatch(tool_name, validated)
-        except TimeoutError:
-            return await self._reject(
-                request_id,
-                agent_id,
-                tool_name,
-                validated,
-                ToolOutcome.TIMED_OUT,
-                ERROR_TIMEOUT,
-                started,
-            )
-        except WriteCapabilityDisabled:
-            return await self._reject(
-                request_id,
-                agent_id,
-                tool_name,
-                validated,
-                ToolOutcome.REJECTED,
-                ERROR_WRITE_DISABLED,
-                started,
-            )
-        except Exception:
-            # Unknown failure: classified as final so it is not retried blindly.
-            return await self._reject(
-                request_id,
-                agent_id,
-                tool_name,
-                validated,
-                ToolOutcome.FAILED_FINAL,
-                ERROR_EXECUTION,
-                started,
-            )
+        produced: BaseModel | None = None
+        last_retry_count = 0
+        for attempt_idx in range(MAX_TOOL_ATTEMPTS):
+            last_retry_count = attempt_idx
+            attempt_started = perf_counter()
+            try:
+                async with asyncio.timeout(spec.timeout_s):
+                    produced = await self._dispatch(tool_name, validated)
+                break
+            except TimeoutError:
+                await self._audit.record(
+                    ToolAttempt(
+                        request_id=request_id,
+                        ticket_id=self._ticket_id,
+                        trace_id=self._trace_id,
+                        agent_id=agent_id,
+                        tool_name=tool_name,
+                        args_summary=redact_mapping(validated.model_dump(mode="json")),
+                        result_summary=None,
+                        outcome=ToolOutcome.TIMED_OUT,
+                        latency_ms=_elapsed_ms(attempt_started),
+                        retry_count=attempt_idx,
+                    )
+                )
+                if attempt_idx == MAX_TOOL_ATTEMPTS - 1:
+                    return ToolResult(
+                        request_id=request_id,
+                        operation_id=None,
+                        tool_name=cast(ToolName, tool_name),
+                        outcome=ToolOutcome.TIMED_OUT,
+                        data=None,
+                        error_code=ERROR_TIMEOUT,
+                        retry_count=attempt_idx,
+                        latency_ms=_elapsed_ms(started),
+                    )
+                continue
+            except WriteCapabilityDisabled:
+                return await self._reject(
+                    request_id,
+                    agent_id,
+                    tool_name,
+                    validated,
+                    ToolOutcome.REJECTED,
+                    ERROR_WRITE_DISABLED,
+                    started,
+                    retry_count=attempt_idx,
+                )
+            except Exception:
+                # Unknown failure: classified as final so it is not retried blindly.
+                return await self._reject(
+                    request_id,
+                    agent_id,
+                    tool_name,
+                    validated,
+                    ToolOutcome.FAILED_FINAL,
+                    ERROR_EXECUTION,
+                    started,
+                    retry_count=attempt_idx,
+                )
 
         try:
             data = result_model.model_validate(produced)
@@ -196,6 +222,7 @@ class ReadToolExecutor:
                 ToolOutcome.FAILED_FINAL,
                 ERROR_INVALID_RESULT,
                 started,
+                retry_count=last_retry_count,
             )
 
         latency_ms = _elapsed_ms(started)
@@ -210,6 +237,7 @@ class ReadToolExecutor:
                 result_summary=redact_mapping(data.model_dump(mode="json")),
                 outcome=ToolOutcome.SUCCEEDED,
                 latency_ms=latency_ms,
+                retry_count=last_retry_count,
             )
         )
         return ToolResult(
@@ -219,7 +247,7 @@ class ReadToolExecutor:
             outcome=ToolOutcome.SUCCEEDED,
             data=cast(ToolResultUnion, data),
             error_code=None,
-            retry_count=0,
+            retry_count=last_retry_count,
             latency_ms=latency_ms,
         )
 
@@ -267,6 +295,7 @@ class ReadToolExecutor:
         outcome: ToolOutcome,
         error_code: str,
         started: float,
+        retry_count: int = 0,
     ) -> ToolResult:
         latency_ms = _elapsed_ms(started)
         await self._audit.record(
@@ -280,6 +309,7 @@ class ReadToolExecutor:
                 result_summary=None,
                 outcome=outcome,
                 latency_ms=latency_ms,
+                retry_count=retry_count,
             )
         )
         return ToolResult(
@@ -289,7 +319,7 @@ class ReadToolExecutor:
             outcome=outcome,
             data=None,
             error_code=error_code,
-            retry_count=0,
+            retry_count=retry_count,
             latency_ms=latency_ms,
         )
 
@@ -544,43 +574,67 @@ class WriteToolExecutor:
                         )
 
         # Execution
-        try:
-            async with asyncio.timeout(spec.timeout_s):
-                produced = await self._dispatch(tool_name, validated)
-        except TimeoutError:
-            if self._operation_repo is not None:
-                await self._operation_repo.record_failure(
-                    idempotency_key,
-                    status="timed_out",
-                    result_summary={"error": ERROR_TIMEOUT},
+        produced: BaseModel | None = None
+        last_retry_count = 0
+        for attempt_idx in range(MAX_TOOL_ATTEMPTS):
+            last_retry_count = attempt_idx
+            attempt_started = perf_counter()
+            try:
+                async with asyncio.timeout(spec.timeout_s):
+                    produced = await self._dispatch(tool_name, validated)
+                break
+            except TimeoutError:
+                await self._audit.record(
+                    ToolAttempt(
+                        request_id=request_id,
+                        ticket_id=self._ticket_id,
+                        trace_id=self._trace_id,
+                        operation_id=operation_id,
+                        agent_id=agent_id,
+                        tool_name=tool_name,
+                        args_summary=redact_mapping(validated.model_dump(mode="python")),
+                        result_summary=None,
+                        outcome=ToolOutcome.TIMED_OUT,
+                        latency_ms=_elapsed_ms(attempt_started),
+                        retry_count=attempt_idx,
+                    )
                 )
-            return await self._reject(
-                request_id,
-                agent_id,
-                tool_name,
-                operation_id,
-                validated,
-                ToolOutcome.TIMED_OUT,
-                ERROR_TIMEOUT,
-                started,
-            )
-        except Exception as exc:
-            if self._operation_repo is not None:
-                await self._operation_repo.record_failure(
-                    idempotency_key,
-                    status="failed_final",
-                    result_summary={"error": str(exc)[:200]},
+                if attempt_idx == MAX_TOOL_ATTEMPTS - 1:
+                    if self._operation_repo is not None:
+                        await self._operation_repo.record_failure(
+                            idempotency_key,
+                            status="failed_final",
+                            result_summary={"error": ERROR_TIMEOUT},
+                        )
+                    return ToolResult(
+                        request_id=request_id,
+                        operation_id=operation_id,
+                        tool_name=cast(ToolName, tool_name),
+                        outcome=ToolOutcome.TIMED_OUT,
+                        data=None,
+                        error_code=ERROR_TIMEOUT,
+                        retry_count=attempt_idx,
+                        latency_ms=_elapsed_ms(started),
+                    )
+                continue
+            except Exception as exc:
+                if self._operation_repo is not None:
+                    await self._operation_repo.record_failure(
+                        idempotency_key,
+                        status="failed_final",
+                        result_summary={"error": str(exc)[:200]},
+                    )
+                return await self._reject(
+                    request_id,
+                    agent_id,
+                    tool_name,
+                    operation_id,
+                    validated,
+                    ToolOutcome.FAILED_FINAL,
+                    ERROR_EXECUTION,
+                    started,
+                    retry_count=attempt_idx,
                 )
-            return await self._reject(
-                request_id,
-                agent_id,
-                tool_name,
-                operation_id,
-                validated,
-                ToolOutcome.FAILED_FINAL,
-                ERROR_EXECUTION,
-                started,
-            )
 
         try:
             data = result_model.model_validate(produced)
@@ -600,6 +654,7 @@ class WriteToolExecutor:
                 ToolOutcome.FAILED_FINAL,
                 ERROR_INVALID_RESULT,
                 started,
+                retry_count=last_retry_count,
             )
 
         result_dict = data.model_dump(mode="python")
@@ -625,6 +680,7 @@ class WriteToolExecutor:
                 result_summary=result_summary,
                 outcome=ToolOutcome.SUCCEEDED,
                 latency_ms=latency_ms,
+                retry_count=last_retry_count,
             )
         )
         return ToolResult(
@@ -634,7 +690,7 @@ class WriteToolExecutor:
             outcome=ToolOutcome.SUCCEEDED,
             data=cast(ToolResultUnion, data),
             error_code=None,
-            retry_count=0,
+            retry_count=last_retry_count,
             latency_ms=latency_ms,
         )
 
@@ -756,6 +812,7 @@ class WriteToolExecutor:
         outcome: ToolOutcome,
         error_code: str,
         started: float,
+        retry_count: int = 0,
     ) -> ToolResult:
         latency_ms = _elapsed_ms(started)
         await self._audit.record(
@@ -770,6 +827,7 @@ class WriteToolExecutor:
                 result_summary=None,
                 outcome=outcome,
                 latency_ms=latency_ms,
+                retry_count=retry_count,
             )
         )
         return ToolResult(
@@ -779,7 +837,7 @@ class WriteToolExecutor:
             outcome=outcome,
             data=None,
             error_code=error_code,
-            retry_count=0,
+            retry_count=retry_count,
             latency_ms=latency_ms,
         )
 

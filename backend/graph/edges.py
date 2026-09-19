@@ -140,5 +140,7 @@ def route_from_approval(state: TicketState) -> str:
 
     if approval.status is ApprovalStatus.APPROVED:
         return "action_execute"
+    if approval.status is ApprovalStatus.REJECTED:
+        return "rejected"
 
     return "escalated"

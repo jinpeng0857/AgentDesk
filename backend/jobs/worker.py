@@ -21,7 +21,7 @@ from backend.integrations.prompt_loader import load_all_prompts
 from backend.jobs.context import WorkerContext
 from backend.jobs.outbox import dispatch_outbox
 from backend.jobs.serialization import json_job_deserializer, json_job_serializer
-from backend.jobs.tickets import GraphTicketRunner, start_ticket
+from backend.jobs.tickets import GraphTicketRunner, resume_ticket, start_ticket
 
 OUTBOX_POLL_SECONDS = 5
 
@@ -84,7 +84,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
-    functions = [start_ticket]
+    functions = [start_ticket, resume_ticket]
     cron_jobs = [
         cron(
             dispatch_outbox,

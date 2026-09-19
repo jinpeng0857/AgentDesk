@@ -12,7 +12,7 @@ from typing import Any
 from redis.exceptions import RedisError
 
 from backend.db.repositories.outbox import OutboxRepository
-from backend.jobs.tickets import START_TICKET_JOB, start_job_id, worker_context
+from backend.jobs.tickets import RESUME_TICKET_JOB, START_TICKET_JOB, start_job_id, worker_context
 
 OUTBOX_BATCH_SIZE = 20
 OUTBOX_RETRY_DELAY_S = 15
@@ -28,11 +28,22 @@ async def dispatch_outbox(ctx: dict[str, Any]) -> int:
 
         for row in rows:
             try:
-                await context.redis.enqueue_job(
-                    START_TICKET_JOB,
-                    str(row.ticket_id),
-                    _job_id=start_job_id(str(row.ticket_id)),
-                )
+                if row.job_name == RESUME_TICKET_JOB:
+                    payload = row.payload or {}
+                    ticket_id_val = str(payload.get("ticket_id") or row.ticket_id)
+                    approval_id_val = str(payload.get("approval_id") or "")
+                    await context.redis.enqueue_job(
+                        RESUME_TICKET_JOB,
+                        ticket_id_val,
+                        approval_id_val,
+                        _job_id=row.dedupe_key,
+                    )
+                else:
+                    await context.redis.enqueue_job(
+                        START_TICKET_JOB,
+                        str(row.ticket_id),
+                        _job_id=row.dedupe_key or start_job_id(str(row.ticket_id)),
+                    )
             except (RedisError, OSError, TimeoutError) as exc:
                 await repository.mark_failed(
                     row,

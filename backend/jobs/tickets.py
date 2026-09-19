@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.context import ModelClient
@@ -133,7 +134,9 @@ class GraphTicketRunner:
             if current_status in (
                 TicketStatus.RESOLVED,
                 TicketStatus.ESCALATED,
+                TicketStatus.REJECTED,
                 TicketStatus.FAILED,
+                TicketStatus.EXPIRED,
             ):
                 return current_status
 
@@ -151,6 +154,48 @@ class GraphTicketRunner:
 
         final_status = current_status
         async for state in graph.astream(input_state, config=config, stream_mode="values"):
+            async with self._session_factory() as session:
+                repo = TicketRepository(session)
+                await repo.sync_projection(state)
+                await session.commit()
+            final_status = TicketStatus(state["status"])
+
+        return final_status
+
+    async def resume(
+        self, ticket_id: str | uuid.UUID, approval_id: str | uuid.UUID
+    ) -> TicketStatus:
+        ticket_uuid = uuid.UUID(str(ticket_id))
+        thread_id = str(ticket_uuid)
+
+        async with self._session_factory() as session:
+            repo = TicketRepository(session)
+            record = await repo.get(ticket_uuid)
+            if record is None:
+                raise LookupError(f"Ticket {ticket_id} does not exist")
+
+            current_status = TicketStatus(record.status)
+            if current_status in (
+                TicketStatus.RESOLVED,
+                TicketStatus.ESCALATED,
+                TicketStatus.REJECTED,
+                TicketStatus.FAILED,
+                TicketStatus.EXPIRED,
+            ):
+                return current_status
+
+        config = {"configurable": {"thread_id": thread_id}}
+
+        if self._graph is not None:
+            graph = self._graph
+        elif self._graph_factory is not None:
+            graph = self._graph_factory(record)
+        else:
+            graph = self._build_default_graph(record)
+
+        resume_command = Command(resume={"approval_id": str(approval_id)})
+        final_status = current_status
+        async for state in graph.astream(resume_command, config=config, stream_mode="values"):
             async with self._session_factory() as session:
                 repo = TicketRepository(session)
                 await repo.sync_projection(state)
@@ -182,9 +227,14 @@ class GraphTicketRunner:
             prompts=self._prompts,
             settings=self._settings,
             tool_executor=tool_executor,
+            session_factory=self._session_factory,
         )
         return build_ticket_graph(context, checkpointer=self._checkpointer)
 
 
 async def start_ticket(ctx: dict[str, Any], ticket_id: str) -> None:
     await worker_context(ctx).runner.run(ticket_id)
+
+
+async def resume_ticket(ctx: dict[str, Any], ticket_id: str, approval_id: str) -> None:
+    await worker_context(ctx).runner.resume(ticket_id, approval_id)

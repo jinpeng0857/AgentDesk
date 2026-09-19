@@ -1,4 +1,4 @@
-﻿"""Runtime dependency container for LangGraph node closures."""
+"""Runtime dependency container for LangGraph node closures."""
 
 from __future__ import annotations
 
@@ -16,3 +16,4 @@ class GraphContext:
     prompts: dict[str, LoadedPrompt]
     settings: AppSettings
     tool_executor: Any | None = None
+    session_factory: Any | None = None

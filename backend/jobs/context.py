@@ -20,6 +20,7 @@ class TicketRunner(Protocol):
     """Runs or resumes the graph for one ticket. Only the Worker may call this."""
 
     async def run(self, ticket_id: str) -> TicketStatus: ...
+    async def resume(self, ticket_id: str, approval_id: str) -> TicketStatus: ...
 
 
 @dataclass(frozen=True)

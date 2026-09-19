@@ -1236,7 +1236,7 @@ AgentDesk/
 - Supervisor/Knowledge/Action 的只读路径；
 - Ticket API、Worker、基础前端。
 
-验收：提交网络查询返回 202，Worker 执行、引用可回查、重启后状态仍可查询。
+验收：提交网络查询返回 202，Worker 执行、引用可回查、重启后状态仍可查询。当前仓库已按 [`Phase 1 implementation plan`](superpowers/plans/2026-09-14-phase-1-read-only-vertical-slice.md) 完成本阶段产出与全量验收，产出 `eval/artifacts/phase1-after.json` 真实对比产物。
 
 ### Phase 2：写操作治理与 HITL
 

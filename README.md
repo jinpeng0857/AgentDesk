@@ -90,7 +90,7 @@ Action 生成 PendingOperation
 
 ## 当前真实状态
 
-仓库已完成 Phase 0 的契约产出与本地验收，并已实现 Phase 1 只读纵切的基础部分；它仍不是完整可运行的业务应用。
+仓库已完成 Phase 0 契约闭合与 Phase 1 只读纵切的全部交付与本地验收；Phase 2 写操作治理与 HITL 尚未开始。
 
 当前可以验证的内容：
 
@@ -99,16 +99,17 @@ Action 生成 PendingOperation
 - 八个 Tool 的 Pydantic v2 模型、Registry、白名单和生成式 JSON Schema 已落库；
 - FastAPI 暴露 13 个接口契约，OpenAPI 与前端 TypeScript 类型均由代码生成；
 - `eval/golden_dataset.json` 包含 20 条已人工确认标签的冒烟评估样本；
-- Docker Compose 只提供 PostgreSQL 与 Redis，两个基础设施服务已做健康启动验证；
+- Docker Compose 提供 PostgreSQL、Redis、API 与 Worker 服务，容器健康启动与依赖关系已验证；
 - PostgreSQL 业务表与 LangGraph checkpoint 表由 Alembic 从空库建出，应用启动时不隐式建表；
 - `/api/auth/login`、`/api/auth/me` 与 `POST /api/tickets` 已实现：Argon2id + JWT 认证、校验 issuer/audience/expiry、单事务写入工单与 outbox 后返回 HTTP 202；
+- `GET /api/tickets`、`GET /api/tickets/{ticket_id}` 与 `GET /api/tickets/{ticket_id}/trace` 已实现：强制请求人数据隔离、返回包含 5 字段完整知识引用的 resolved 结果、以及按时间正序且脱敏的 Trace 事件；
 - ARQ 使用严格 JSON 载荷与确定性 `start:{ticket_id}` 作业 ID，API 不运行 Agent 图；
-- 四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索已实现，并可由 `scripts/seed_demo_data.py` 确定性播种；
-- 四个业务写 Tool 在 Phase 1 没有任何实现：执行网关在解析实现之前就确定性拒绝，且每次尝试都写入脱敏审计。
+- Worker 独占运行 LangGraph 图：基于 PostgreSQL checkpointer 实现确定性恢复，故障重启后不重复执行已完成步骤且终态短路；
+- 四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索已实现；
+- Vue 3 最小前端已交付：纯内存认证、提交表单后立即清空口令、2 秒自动轮询、后台页面休眠暂停、终态停止以及 5 字段引用卡片展示；
+- 真实 live 评估门禁已通过：`eval/artifacts/phase1-before.json` 与 `phase1-after.json` 均在工作区干净提交上产出，使用同一 OpenAI 兼容模型端点（`deepseek-chat`），元数据严格一致，测得 17/20 意图匹配（仅供回归参考，非简历百分比）。
 
-**仍未实现**：LangGraph 运行时与 Worker 图执行、checkpoint 恢复、工单查询与 Trace API、前端页面、只读纵切的端到端验收，以及任何评估指标与 CI。因此不得把契约端点或只读组件的存在描述为完整业务能力已经完成。
-
-**Phase 1 尚未完成。** 其验收门禁要求在工作区干净的提交上产出可追溯的 live 模型前后对比 artifact；当前缺少 OpenAI-compatible 凭据，该产物**不存在**，计划明确要求在此停止而不是事后补造。所以既不得宣称 Phase 1 完成，也不得宣称完整应用可以一键部署。
+**仍未实现（Phase 2/3 范围）**：四个业务写 Tool 的真实实现、operation 幂等账本、Policy 风险矩阵、审批流与 interrupt/resume、80+ 条完整评测集与指标看板。
 
 ### Phase 0 状态
 
@@ -123,7 +124,7 @@ Action 生成 PendingOperation
 | 主文档同步 | 完成 |
 | 最终验收门禁 | 完成 |
 
-Phase 0 只建立后续开发必须遵守的契约基线，不代表 Phase 1～3 的业务实现已经完成。
+Phase 0 建立后续开发必须遵守的契约基线。
 
 ### Phase 1 状态
 
@@ -134,10 +135,10 @@ Phase 0 只建立后续开发必须遵守的契约基线，不代表 Phase 1～3
 | JSON ARQ 队列、事务 outbox 与 HTTP 202 | 完成 |
 | OpenAI-compatible 模型适配层与确定性 Fake | 完成 |
 | 只读 Agent / Tool / 治理网关 / 八个 Adapter | 完成 |
-| live 模型前后对比门禁 | **阻塞：缺少 OpenAI-compatible 凭据** |
-| LangGraph 运行时与 Worker 恢复 | 未开始（被上一行阻塞） |
-| 工单查询与 Trace API | 未开始（被同一门禁阻塞） |
-| Vue 最小切片、CI 与 Phase 1 验收 | 未开始（被同一门禁阻塞） |
+| LangGraph 运行时与 Worker 恢复 | 完成 |
+| 工单查询与 Trace API | 完成 |
+| Vue 最小切片、CI 与 Phase 1 验收 | 完成 |
+| live 模型前后对比门禁 | 完成（`phase1-before.json` vs `phase1-after.json`） |
 
 ---
 
@@ -179,9 +180,9 @@ high_risk
 | POST | `/api/auth/login` | Argon2 校验后签发 JWT | 已实现 |
 | GET | `/api/auth/me` | 当前身份，校验 JWT 与账号状态 | 已实现 |
 | POST | `/api/tickets` | 单事务写入工单与 outbox，返回 HTTP 202 | 已实现 |
-| GET | `/api/tickets` | 当前用户工单列表 | 501 |
-| GET | `/api/tickets/{ticket_id}` | 查询状态与结果 | 501 |
-| GET | `/api/tickets/{ticket_id}/trace` | 查询脱敏轨迹 | 501 |
+| GET | `/api/tickets` | 当前用户工单列表 | 已实现 |
+| GET | `/api/tickets/{ticket_id}` | 查询状态与结果 | 已实现 |
+| GET | `/api/tickets/{ticket_id}/trace` | 查询脱敏轨迹 | 已实现 |
 | GET | `/api/approvals` | approver 的待审批列表 | 501 |
 | GET | `/api/approvals/{approval_id}` | 审批详情 | 501 |
 | POST | `/api/approvals/{approval_id}/decision` | approve/reject，带乐观锁版本 | 501 |

@@ -24,7 +24,7 @@
 
 ## 2. 当前可验证状态
 
-截至 Phase 1 只读纵切基础（**Phase 1 尚未完成**）：
+截至 Phase 1 只读纵切完成（**Phase 1 已完成验收，Phase 2 待开始**）：
 
 ### 已完成
 
@@ -45,20 +45,20 @@
 - 实现 OpenAI-compatible 模型适配层与确定性 Fake，区分可重试与不可重试失败。
 - 实现四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索。
 - 只读执行网关对四个写工具确定性拒绝且零副作用，每次尝试都写入脱敏审计。
+- Worker 独占运行 LangGraph 图：基于 PostgreSQL checkpointer 实现确定性断点恢复，故障注入测试验证重启后 Supervisor 分类不重复且零写副作用。
+- 实现工单查询与脱敏 Trace API（`GET /api/tickets`、`GET /api/tickets/{ticket_id}`、`GET /api/tickets/{ticket_id}/trace`），严格保障请求人数据隔离与越权防探测（404）。
+- 交付 Vue 3 最小前端：纯内存认证、提交表单立即清空密码输入、2 秒自动轮询、后台页面休眠暂停、终态停止以及 5 字段知识库卡片展示。
+- 交付三个 CI 工作流（Backend CI、Frontend CI、Evaluation）与自动化 `phase1_smoke.py` 脚本。
+- 冻结真实 live 模型前后对比产物：`eval/artifacts/phase1-before.json` 与 `eval/artifacts/phase1-after.json`，在干净工作区基于同一模型（`deepseek-chat`）产出并严格比对元数据。
 
-### 尚未完成
+### 尚未完成（Phase 2/3 范围）
 
-- LangGraph 运行时、Worker 图执行与 checkpoint 恢复；
-- 工单查询与 Trace API；
-- 前端页面；
 - 四个业务写 Tool 的真实实现，以及幂等账本、Policy 风险矩阵、审批与 interrupt/resume；
-- 完整 80 条 Golden Dataset、baseline、Live Eval 和任何可发布实测指标；
-- 包含 frontend/api/worker 的完整 Docker Compose 可运行栈；
-- 三个 CI 工作流及其实际运行记录。
+- 完整 80 条 Golden Dataset、长期 baseline、Eval 看板与可发布的完整实测指标；
+- 审批台（ApprovalView）与 Trace 可视化看板（TraceViewer）；
+- 跨主机部署与多节点高可用。
 
-Phase 1 的 live 模型前后对比门禁因缺少 OpenAI-compatible 凭据而阻塞，该 artifact 不存在，因此不存在可发布的模型或系统指标。
-
-因此当前可以展示为“已完成契约基线、已落地只读纵切基础、正在开发图运行时与业务纵切的个人工程项目”，不能写成“设计并实现了完整系统”。
+因此当前可以展示为“已完成契约基线与可运行的只读纵切（包含独立 Worker、PostgreSQL checkpoint 恢复、只读工具治理、最小前端与 live 模型对比产物），正在开发写操作治理与 HITL 的作品集级生产化项目”。
 
 ---
 
@@ -66,15 +66,15 @@ Phase 1 的 live 模型前后对比门禁因缺少 OpenAI-compatible 凭据而�
 
 | 候选能力 | 写入简历前必须具备的证据 | 当前状态 |
 |---|---|---|
-| 多 Agent 编排 | 可运行图、路由测试、真实 Trace | 未满足：四个 Agent 角色与 Prompt 边界已实现并有契约测试，但无可运行图 |
-| 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | 部分满足：HTTP 202、JSON ARQ 载荷、确定性 job ID 与 outbox 投递测试已有；图执行与重启恢复未实现 |
+| 多 Agent 编排 | 可运行图、路由测试、真实 Trace | 部分满足：四个 Agent 角色、Dispatcher 确定性边界、只读 LangGraph 图与恢复测试已通过；写操作与 HITL 属 Phase 2 |
+| 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | 满足：HTTP 202、JSON ARQ 载荷、确定性 job ID、outbox 投递与 Worker 崩溃恢复断点续跑测试已通过 |
 | Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | 部分满足：Registry、白名单、Schema、只读执行网关与脱敏审计测试已有；幂等账本与写路径属 Phase 2 |
-| Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | 未满足 |
-| RAG | 可回查引用、检索评估产物 | 部分满足：Chroma 返回五字段可回查引用并已测试；检索评估产物缺失 |
-| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核冒烟样本与离线评测外壳已提交；无 Live Eval |
-| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：OpenAPI 生成类型已提交；页面未实现 |
-| 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证；应用镜像未实现 |
-| 量化指标 | 可下载 eval artifact + Git SHA | 未满足 |
+| Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | 未满足：属 Phase 2 交付范围 |
+| RAG | 可回查引用、检索评估产物 | 满足：Chroma 返回五字段可回查引用，持久化至 projection，并在详情 API 与前端卡片完整渲染 |
+| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核样本、live model baseline 与 candidate 对比 artifact 已冻结（`phase1-before.json` vs `phase1-after.json`）；完整 80+ 条评测集待 Phase 3 |
+| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：Vue 3 最小切片、内存 JWT、2 秒轮询、终态停止、5 字段引用展示已实现并经 Vitest 与构建验证；审批页待 Phase 2 |
+| 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证；API/Worker 容器与 Dockerfile 已配置 |
+| 量化指标 | 可下载 eval artifact + Git SHA | 部分满足：已产出 `phase1-before.json` 与 `phase1-after.json`，带完整 Git SHA 与元数据对比（仅供阶段回归，不作最终发布） |
 
 当某行证据全部存在后，才能新增对应完成时 bullet。不能先写 bullet 再等待实现追上文案。
 

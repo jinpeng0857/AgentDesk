@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agents.action import create_pending_operation
-from agents.policy import PolicyReason, assess_risk
+from agents.policy import assess_risk
 from agents.schemas import (
     ActionProposal,
     ActorContext,
+    PolicyReason,
     RiskLevel,
     ToolOutcome,
 )
@@ -233,8 +234,8 @@ async def test_write_executor_executes_create_ticket_and_idempotent() -> None:
         user=RecordingUserRepository(result=user_result()),
         order=RecordingOrderRepository(result=order_result()),
         service=RecordingServiceRepository(result=service_result()),
-        credential=UnusedCredentialService(),  # type: ignore[arg-type]
-        refund=UnusedRefundService(),  # type: ignore[arg-type]
+        credential=UnusedCredentialService(),
+        refund=UnusedRefundService(),
         ticket=ticket_service,
         access_request=FakeAccessRequestService(),
     )
@@ -291,8 +292,8 @@ async def test_write_executor_cross_user_request_access_refused_zero_calls() -> 
         user=RecordingUserRepository(result=user_result()),
         order=RecordingOrderRepository(result=order_result()),
         service=RecordingServiceRepository(result=service_result()),
-        credential=UnusedCredentialService(),  # type: ignore[arg-type]
-        refund=UnusedRefundService(),  # type: ignore[arg-type]
+        credential=UnusedCredentialService(),
+        refund=UnusedRefundService(),
         ticket=FakeTicketService(),
         access_request=access_service,
     )

@@ -8,10 +8,12 @@ capabilities (``create_ticket``, ``request_access``, ``reset_password``,
 
 from __future__ import annotations
 
-from tools.context import OrderRepository, TicketService
+from tools.context import OrderRepository, RefundService, TicketService
 from tools.schemas import (
     CreateTicketArgs,
     CreateTicketResult,
+    ProcessRefundArgs,
+    ProcessRefundResult,
     QueryOrderArgs,
     QueryOrderResult,
 )
@@ -27,4 +29,10 @@ async def create_ticket(
     args: CreateTicketArgs, service: TicketService
 ) -> CreateTicketResult:
     return await service.create_ticket(args)
+
+
+async def process_refund(
+    args: ProcessRefundArgs, service: RefundService
+) -> ProcessRefundResult:
+    return await service.process_refund(args)
 

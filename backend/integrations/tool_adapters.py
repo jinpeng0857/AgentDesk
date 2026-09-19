@@ -10,6 +10,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,7 @@ from backend.db.models import (
     AccessRequestRecord,
     DownstreamTicketRecord,
     OrderRecord,
+    RefundRecord,
     ServiceStatusRecord,
     UserRecord,
 )
@@ -52,6 +54,7 @@ __all__ = [
     "SqlAccessRequestService",
     "SqlCredentialService",
     "SqlOrderRepository",
+    "SqlRefundService",
     "SqlServiceRepository",
     "SqlTicketService",
     "SqlUserRepository",
@@ -252,5 +255,71 @@ class SqlCredentialService:
             temporary_password=SecretStr(temp_password),
             credential_version=user.version,
         )
+
+
+class SqlRefundService:
+    """Processes refunds persisted to PostgreSQL and decrements order refundable amount."""
+
+    def __init__(self, session: AsyncSession, ticket_id: uuid.UUID | None = None) -> None:
+        self._session = session
+        self._ticket_id = ticket_id
+
+    async def process_refund(self, args: ProcessRefundArgs) -> ProcessRefundResult:
+        if self._ticket_id is None:
+            raise ValueError("SqlRefundService requires a valid ticket_id")
+
+        order = await self._session.get(OrderRecord, args.order_id)
+        if order is None:
+            raise LookupError(f"order {args.order_id} does not exist")
+
+        if order.requester_id != args.requester_id:
+            raise PermissionError(
+                f"order {args.order_id} belongs to {order.requester_id}, not {args.requester_id}"
+            )
+
+        if order.status != "paid":
+            raise ValueError(f"cannot refund order with status {order.status}")
+
+        if args.order_version != order.version:
+            raise ValueError(
+                f"order version mismatch: expected {order.version}, got {args.order_version}"
+            )
+
+        if args.amount <= Decimal("0"):
+            raise ValueError(f"refund amount must be positive, got {args.amount}")
+
+        if args.amount > order.refundable_amount:
+            raise ValueError(
+                f"refund amount {args.amount} exceeds refundable amount {order.refundable_amount}"
+            )
+
+        if args.currency != "USD":
+            raise ValueError(f"unsupported currency {args.currency}")
+
+        order.refundable_amount = order.refundable_amount - args.amount
+        if order.refundable_amount == Decimal("0"):
+            order.status = "refunded"
+        order.version = order.version + 1
+
+        refund_id = f"ref-{uuid.uuid4().hex[:12]}"
+        record = RefundRecord(
+            id=refund_id,
+            ticket_id=self._ticket_id,
+            order_id=order.id,
+            requester_id=args.requester_id,
+            amount=args.amount,
+            currency="USD",
+            status="succeeded",
+        )
+        self._session.add(record)
+        await self._session.flush()
+
+        return ProcessRefundResult(
+            refund_id=refund_id,
+            status=WriteResultStatus.SUCCEEDED,
+            amount=args.amount,
+            currency="USD",
+        )
+
 
 

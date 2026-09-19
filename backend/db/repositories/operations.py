@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import ToolOperationRecord
@@ -48,7 +49,7 @@ class OperationRepository:
         status: str = "pending",
         lease_holder: str | None = None,
         lease_duration_seconds: int = 60,
-    ) -> ToolOperationRecord:
+    ) -> ToolOperationRecord | None:
         now = datetime.now(UTC)
         lease_expires = now + timedelta(seconds=lease_duration_seconds) if lease_holder else None
         record = ToolOperationRecord(
@@ -61,8 +62,12 @@ class OperationRepository:
             lease_holder=lease_holder,
             lease_expires_at=lease_expires,
         )
-        self._session.add(record)
-        await self._session.flush()
+        try:
+            async with self._session.begin_nested():
+                self._session.add(record)
+                await self._session.flush()
+        except IntegrityError:
+            return None
         return record
 
     async def acquire_lease(

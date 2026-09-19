@@ -2,7 +2,7 @@
 
 - Date (UTC+8): 2026-09-19
 - Goal: Phase 1 Smoke、CI 与 live 前后对比（Gate A 全量验收）
-- Commit SHA: `PENDING`
+- Commit SHA: `cafdc27`
 - Changed files:
   - `scripts/phase1_smoke.py`
   - `.github/workflows/backend-ci.yml`

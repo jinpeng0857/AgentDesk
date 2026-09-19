@@ -38,9 +38,12 @@ from backend.jobs.serialization import json_job_deserializer, json_job_serialize
 from backend.main import create_app
 from scripts.seed_demo_data import seed_orders, seed_services, seed_users
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TEST_DATABASE_URL = (
-    "postgresql+asyncpg://agentdesk:agentdesk@localhost:5432/agentdesk_test"
+    "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_test"
 )
 
 
@@ -179,7 +182,7 @@ async def seeded_users(session_factory: async_sessionmaker[AsyncSession]) -> Non
 def api_settings(test_database_url: str) -> AppSettings:
     return AppSettings(
         database_url=test_database_url,
-        redis_url="redis://localhost:6379/15",
+        redis_url="redis://127.0.0.1:6379/15",
         jwt_secret=TEST_JWT_SECRET,
         openai_model="test-model",
     )
@@ -203,7 +206,7 @@ async def api_client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
         yield client
 
 
-TEST_REDIS_URL = "redis://localhost:6379/15"
+TEST_REDIS_URL = "redis://127.0.0.1:6379/15"
 
 
 @pytest.fixture

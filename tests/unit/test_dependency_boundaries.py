@@ -54,18 +54,35 @@ def test_domain_layers_do_not_import_service_or_infrastructure() -> None:
     assert scan_import_roots(domain_roots, FORBIDDEN_ROOTS) == []
 
 
-def test_phase_zero_compose_has_only_healthy_versioned_infrastructure() -> None:
+def test_compose_services_configuration() -> None:
     compose_path = REPOSITORY_ROOT / "docker-compose.yml"
     compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     services = compose["services"]
 
-    assert set(services) == {"postgres", "redis"}
-    for service in services.values():
-        assert service["image"]
-        assert not service["image"].endswith(":latest")
-        assert service["healthcheck"]["test"]
-        assert "build" not in service
+    assert set(services) == {"postgres", "redis", "api", "worker"}
+    for infra_name in ("postgres", "redis"):
+        infra = services[infra_name]
+        assert infra["image"]
+        assert not infra["image"].endswith(":latest")
+        assert infra["healthcheck"]["test"]
+        assert "build" not in infra
 
     postgres = services["postgres"]
     assert "postgres_data:/var/lib/postgresql/data" in postgres["volumes"]
     assert "postgres_data" in compose["volumes"]
+
+    for app_name in ("api", "worker"):
+        app = services[app_name]
+        assert app["build"]["context"] == "."
+        assert app["build"]["dockerfile"] == "backend/Dockerfile"
+        assert app["command"]
+        assert app["depends_on"]["postgres"]["condition"] == "service_healthy"
+        assert app["depends_on"]["redis"]["condition"] == "service_healthy"
+
+    assert services["api"]["command"] != services["worker"]["command"]
+
+
+def test_api_layer_does_not_import_graph_layer() -> None:
+    api_root = (REPOSITORY_ROOT / "backend" / "api",)
+    forbidden = {"backend.graph", "graph"}
+    assert scan_import_roots(api_root, forbidden) == []

@@ -7,7 +7,7 @@ stand-in Redis pool without starting the real infrastructure.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from arq.connections import ArqRedis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -28,3 +28,4 @@ class WorkerContext:
     session_factory: async_sessionmaker[AsyncSession]
     redis: ArqRedis
     runner: TicketRunner
+    checkpointer: Any | None = None

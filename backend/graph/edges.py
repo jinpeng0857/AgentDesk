@@ -72,6 +72,8 @@ def advance_dispatch(
         state["status"] = TicketStatus.ESCALATED
     elif next_status is not None:
         state["status"] = next_status
+    elif state["status"] == TicketStatus.QUEUED:
+        state["status"] = TicketStatus.RUNNING
 
     return state
 

@@ -29,5 +29,43 @@ services:
       retries: 10
       start_period: 5s
 
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://agentdesk:agentdesk@postgres:5432/agentdesk
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=agentdesk_development_secret_key_2026_at_least_32_bytes_long
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-deepseek-chat}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: arq backend.jobs.worker.WorkerSettings
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://agentdesk:agentdesk@postgres:5432/agentdesk
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=agentdesk_development_secret_key_2026_at_least_32_bytes_long
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-deepseek-chat}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:

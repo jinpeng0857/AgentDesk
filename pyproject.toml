@@ -78,5 +78,15 @@ plugins = ["pydantic.mypy"]
 # skip following those packages rather than raising the project's own target
 # version. Our code never depends on their declared types.
 [[tool.mypy.overrides]]
-module = ["chromadb", "chromadb.*", "openai._extras.numpy_proxy"]
+module = [
+    "chromadb",
+    "chromadb.*",
+    "openai._extras.numpy_proxy",
+    "langgraph",
+    "langgraph.*",
+    "langchain",
+    "langchain.*",
+    "langchain_core",
+    "langchain_core.*",
+]
 follow_imports = "skip"

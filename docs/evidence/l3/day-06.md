@@ -2,7 +2,7 @@
 
 - Date (UTC+8): 2026-09-19
 - Goal: Login 与 TicketSubmit 最小前端
-- Commit SHA: `PENDING`
+- Commit SHA: `5d2d68a`
 - Changed files:
   - `frontend/package.json`
   - `frontend/package-lock.json`

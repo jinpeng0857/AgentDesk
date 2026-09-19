@@ -67,7 +67,8 @@ def summarize_validation_error(error: ValidationError) -> str:
     parts: list[str] = []
     for item in error.errors()[:MAX_REPORTED_ERRORS]:
         location = ".".join(str(part) for part in item.get("loc", ()))
-        parts.append(f"{location or '<root>'}: {item.get('msg', 'invalid value')}")
+        err_category = item.get("type", "invalid_value")
+        parts.append(f"{location or '<root>'}: {err_category}")
     return "; ".join(parts) or "invalid structure"
 
 
@@ -174,9 +175,7 @@ class OpenAICompatibleModelClient:
         config: ModelCallConfig,
         response_format: ResponseFormat,
     ) -> str:
-        payload = [
-            {"role": message.role, "content": message.content} for message in messages
-        ]
+        payload = [{"role": message.role, "content": message.content} for message in messages]
         try:
             completion = await self._client.chat.completions.create(
                 model=config.model,
@@ -208,26 +207,20 @@ class OpenAICompatibleModelClient:
                             )
                         )
                 return await self._request(fallback_messages, config, {"type": "json_object"})
-            raise ModelConfigurationError(
-                "model provider rejected the request shape"
-            ) from exc
+            raise ModelConfigurationError("model provider rejected the request shape") from exc
         except (
             openai.APITimeoutError,
             openai.APIConnectionError,
             openai.RateLimitError,
             openai.InternalServerError,
         ) as exc:
-            raise ModelTransportError(
-                "model provider is temporarily unavailable"
-            ) from exc
+            raise ModelTransportError("model provider is temporarily unavailable") from exc
         except (
             openai.AuthenticationError,
             openai.PermissionDeniedError,
             openai.NotFoundError,
         ) as exc:
-            raise ModelConfigurationError(
-                "model endpoint or credentials were rejected"
-            ) from exc
+            raise ModelConfigurationError("model endpoint or credentials were rejected") from exc
         except openai.APIStatusError as exc:
             raise ModelConfigurationError("model provider rejected the request") from exc
         except openai.OpenAIError as exc:

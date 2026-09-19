@@ -504,3 +504,272 @@ async def test_f01b_critical_write_tool_consecutive_timeouts_escalates(
         for idx, audit in enumerate(audits):
             assert audit.outcome == "timed_out"
             assert audit.retry_count == idx
+
+
+@pytest.mark.asyncio
+async def test_f02_invalid_model_structure_escalates_after_failed_repairs(
+    session_factory: async_sessionmaker[AsyncSession],
+    checkpointer: AsyncPostgresSaver,
+    migrated_database: str,
+    seeded_users: None,
+) -> None:
+    """F-02: Model returns invalid structure twice in sequence.
+
+    After 2 failed repair attempts, supervisor escalates.
+    Validation error summaries contain only error categories, never sensitive output.
+    Final status: escalated.
+    Write side effects: 0.
+    """
+    ticket_id = uuid.uuid4()
+    trace_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        session.add(
+            TicketRecord(
+                id=ticket_id,
+                thread_id=str(ticket_id),
+                requester_id=REQUESTER_ID,
+                user_query="My password is SuperSecretPass123! Please help.",
+                trace_id=trace_id,
+                status="queued",
+                step_count=0,
+            )
+        )
+        await session.commit()
+
+    # Two invalid structures queued (1 initial + 1 repair attempt)
+    sensitive_token = "SuperSecretPass123!"
+    fake_model = FakeModelClient(
+        [
+            {"invalid_field": sensitive_token, "intent": "non_existent_intent"},
+            {"corrupted_data": sensitive_token},
+        ]
+    )
+
+    adapters = ToolAdapters(
+        knowledge=RecordingKnowledgeStore(result=knowledge_result()),
+        user=RecordingUserRepository(result=user_result()),
+        order=RecordingOrderRepository(result=order_result()),
+        service=RecordingServiceRepository(result=service_result()),
+        credential=DisabledCredentialService(),
+        refund=DisabledRefundService(),
+        ticket=DisabledTicketService(),
+        access_request=DisabledAccessRequestService(),
+    )
+
+    tool_executor = ReadToolExecutor(
+        adapters=adapters,
+        audit=InMemoryAuditSink(),
+        ticket_id=ticket_id,
+        trace_id=trace_id,
+    )
+
+    prompts = load_all_prompts()
+    settings = AppSettings(
+        database_url=migrated_database,
+        jwt_secret="test-secret-at-least-32-bytes-long-for-testing",
+        openai_model="test-model",
+    )
+    ctx = GraphContext(
+        model_client=fake_model,
+        prompts=prompts,
+        settings=settings,
+        tool_executor=tool_executor,
+        session_factory=session_factory,
+    )
+    graph = build_ticket_graph(ctx, checkpointer=checkpointer)
+    runner = GraphTicketRunner(
+        session_factory=session_factory,
+        checkpointer=checkpointer,
+        graph=graph,
+    )
+
+    final_status = await runner.run(str(ticket_id))
+
+    # Assert final status is escalated
+    assert final_status == TicketStatus.ESCALATED
+
+    # Assert exactly 2 model calls made (1 initial + 1 repair)
+    assert len(fake_model.calls) == 2
+
+    # Verify ticket projection in database
+    async with session_factory() as session:
+        ticket = await TicketRepository(session).get(ticket_id)
+        assert ticket is not None
+        assert ticket.status == "escalated"
+
+        # Assert 0 tool calls in DB
+        tool_audits = (
+            await session.scalars(
+                select(ToolCallRecord).where(ToolCallRecord.ticket_id == ticket_id)
+            )
+        ).all()
+        assert len(tool_audits) == 0
+
+        # Assert 0 refund / write side-effects
+        refund_count = await session.scalar(
+            select(func.count())
+            .select_from(RefundRecord)
+            .where(RefundRecord.ticket_id == ticket_id)
+        )
+        assert refund_count == 0
+
+
+@pytest.mark.asyncio
+async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
+    session_factory: async_sessionmaker[AsyncSession],
+    checkpointer: AsyncPostgresSaver,
+    migrated_database: str,
+    seeded_users: None,
+) -> None:
+    """F-03: Graph cycle terminates at step 15 without a 16th step.
+
+    Simulates a loop between supervisor and knowledge:
+    Supervisor -> Knowledge -> Supervisor -> Knowledge ...
+    Must halt at MAX_STEPS = 15, transition to escalated, and never invoke a 16th step.
+    Final status: escalated.
+    Write side effects: 0.
+    """
+    ticket_id = uuid.uuid4()
+    trace_id = uuid.uuid4()
+
+    async with session_factory() as session:
+        session.add(
+            TicketRecord(
+                id=ticket_id,
+                thread_id=str(ticket_id),
+                requester_id=REQUESTER_ID,
+                user_query="Looped routing test query",
+                trace_id=trace_id,
+                status="queued",
+                step_count=0,
+            )
+        )
+        await session.commit()
+
+    # Enqueue 20 alternating valid responses (far more than 15)
+    routing_to_knowledge = RoutingDecision(
+        intent=Intent.NETWORK,
+        next_agent="knowledge",
+        confidence=0.95,
+        escalate=False,
+        reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+    )
+    knowledge_output = KnowledgeAgentOutput(
+        answer="Still investigating network issue.",
+        knowledge_refs=[],
+        fallback=False,
+    )
+
+    looped_responses: list[Any] = []
+    for _ in range(15):
+        looped_responses.append(routing_to_knowledge)
+        looped_responses.append(knowledge_output)
+
+    fake_model = FakeModelClient(looped_responses)
+
+    audit_sink = InMemoryAuditSink()
+    adapters = ToolAdapters(
+        knowledge=RecordingKnowledgeStore(result=knowledge_result()),
+        user=RecordingUserRepository(result=user_result()),
+        order=RecordingOrderRepository(result=order_result()),
+        service=RecordingServiceRepository(result=service_result()),
+        credential=DisabledCredentialService(),
+        refund=DisabledRefundService(),
+        ticket=DisabledTicketService(),
+        access_request=DisabledAccessRequestService(),
+    )
+
+    tool_executor = ReadToolExecutor(
+        adapters=adapters,
+        audit=audit_sink,
+        ticket_id=ticket_id,
+        trace_id=trace_id,
+    )
+
+    prompts = load_all_prompts()
+    settings = AppSettings(
+        database_url=migrated_database,
+        jwt_secret="test-secret-at-least-32-bytes-long-for-testing",
+        openai_model="test-model",
+    )
+    ctx = GraphContext(
+        model_client=fake_model,
+        prompts=prompts,
+        settings=settings,
+        tool_executor=tool_executor,
+        session_factory=session_factory,
+    )
+    from langgraph.graph import END, START, StateGraph
+
+    from backend.graph.edges import route_from_knowledge, route_from_supervisor
+    from backend.graph.nodes import (
+        make_dispatch_node,
+        make_knowledge_node,
+        make_supervisor_node,
+    )
+
+    workflow = StateGraph(TicketState)
+    workflow.add_node("supervisor", make_supervisor_node(ctx))
+    workflow.add_node(
+        "dispatch_supervisor",
+        make_dispatch_node("supervisor", "classify_and_route"),
+    )
+    workflow.add_node("knowledge", make_knowledge_node(ctx))
+    workflow.add_node(
+        "dispatch_knowledge",
+        make_dispatch_node("knowledge", "ground_knowledge"),
+    )
+    workflow.add_node(
+        "escalate",
+        make_dispatch_node("dispatcher", "escalate_ticket", next_status=TicketStatus.ESCALATED),
+    )
+
+    workflow.add_edge(START, "supervisor")
+    workflow.add_edge("supervisor", "dispatch_supervisor")
+    workflow.add_conditional_edges(
+        "dispatch_supervisor",
+        route_from_supervisor,
+        {"knowledge": "knowledge", "escalated": "escalate"},
+    )
+    workflow.add_edge("knowledge", "dispatch_knowledge")
+    workflow.add_conditional_edges(
+        "dispatch_knowledge",
+        route_from_knowledge,
+        {"supervisor": "supervisor", "escalated": "escalate"},
+    )
+    workflow.add_edge("escalate", END)
+    graph = workflow.compile(checkpointer=checkpointer)
+
+    runner = GraphTicketRunner(
+        session_factory=session_factory,
+        checkpointer=checkpointer,
+        graph=graph,
+    )
+
+    final_status = await runner.run(str(ticket_id))
+
+    # Assert final status is escalated
+    assert final_status == TicketStatus.ESCALATED
+
+    # Verify ticket projection in database: step_count == 15 and status == escalated
+    async with session_factory() as session:
+        ticket = await TicketRepository(session).get(ticket_id)
+        assert ticket is not None
+        assert ticket.status == "escalated"
+        assert ticket.step_count == 15
+
+        # Check agent history in state: exactly 15 steps
+        config = {"configurable": {"thread_id": str(ticket_id)}}
+        checkpoint = await checkpointer.aget(config)
+        assert checkpoint is not None
+        state_history = checkpoint["channel_values"]["agent_history"]
+        assert len(state_history) == 15
+
+        # Zero write side-effects
+        refund_count = await session.scalar(
+            select(func.count())
+            .select_from(RefundRecord)
+            .where(RefundRecord.ticket_id == ticket_id)
+        )
+        assert refund_count == 0

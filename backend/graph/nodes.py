@@ -37,6 +37,7 @@ from backend.governance.executor import ToolAdapters, WriteToolExecutor
 from backend.graph.context import GraphContext
 from backend.graph.edges import advance_dispatch
 from backend.graph.state import validate_node_output_keys
+from backend.integrations.model_client import ModelOutputInvalid
 from backend.integrations.prompt_loader import build_system_message
 from backend.integrations.tool_adapters import (
     SqlAccessRequestService,
@@ -62,19 +63,23 @@ def make_supervisor_node(context: GraphContext) -> AsyncNode:
             prompt_version=prompt.version,
         )
         system_prompt = build_system_message(prompt, user_query=state["user_query"])
-        output = await run_supervisor(
-            state=state,
-            system_prompt=system_prompt,
-            model_client=context.model_client,
-            config=config,
-        )
-        if not isinstance(output, RoutingDecision):
+        try:
+            output = await run_supervisor(
+                state=state,
+                system_prompt=system_prompt,
+                model_client=context.model_client,
+                config=config,
+            )
+        except ModelOutputInvalid:
+            output = None
+
+        if output is not None and not isinstance(output, RoutingDecision):
             raise TypeError(
                 f"Supervisor node expected RoutingDecision, got {type(output).__name__}"
             )
 
         updates = {
-            "intent": output.intent,
+            "intent": output.intent if output is not None else None,
             "routing_decision": output,
         }
         validate_node_output_keys("supervisor", updates)
@@ -99,10 +104,7 @@ def make_knowledge_node(context: GraphContext) -> AsyncNode:
                 tool_name="search_knowledge",
                 raw_args={"query": state["user_query"], "top_k": 3},
             )
-            if (
-                tool_result.outcome is ToolOutcome.SUCCEEDED
-                and tool_result.data is not None
-            ):
+            if tool_result.outcome is ToolOutcome.SUCCEEDED and tool_result.data is not None:
                 search_data = cast(SearchKnowledgeResult, tool_result.data)
                 available_refs = [
                     KnowledgeRef(
@@ -205,9 +207,7 @@ def make_action_propose_node(context: GraphContext) -> AsyncNode:
             config=config,
         )
         if not isinstance(proposal, ActionProposal):
-            raise TypeError(
-                f"Action node expected ActionProposal, got {type(proposal).__name__}"
-            )
+            raise TypeError(f"Action node expected ActionProposal, got {type(proposal).__name__}")
 
         if proposal.tool_name in WRITE_TOOL_NAMES:
             pending_op: PendingOperation | None = create_pending_operation(proposal)
@@ -279,11 +279,7 @@ def make_approval_node(context: GraphContext) -> AsyncNode:
                 if existing is None:
                     expires_at = datetime.now(UTC) + timedelta(hours=24)
                     risk_dec = state.get("risk_decision")
-                    risk_str = (
-                        risk_dec.risk_level.value
-                        if risk_dec is not None
-                        else "high"
-                    )
+                    risk_str = risk_dec.risk_level.value if risk_dec is not None else "high"
                     record = await repo.create_approval(
                         ticket_id=uuid.UUID(state["ticket_id"]),
                         operation_id=pending_op.operation_id,
@@ -433,4 +429,3 @@ def make_dispatch_action_execute_node() -> SyncNode:
         return updates
 
     return dispatch_action_execute_node
-

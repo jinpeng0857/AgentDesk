@@ -11,9 +11,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from agents.context import ModelCallConfig, ModelMessage
+from backend.integrations.model_client import ModelOutputInvalid, summarize_validation_error
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -61,7 +62,37 @@ class FakeModelClient:
         if isinstance(response, Exception):
             raise response
         if isinstance(response, Mapping):
-            return output_model.model_validate(dict(response))
+            try:
+                return output_model.model_validate(dict(response))
+            except ValidationError as first_error:
+                errors = summarize_validation_error(first_error)
+                for _attempt in range(config.max_retries):
+                    if self._index >= len(self.responses):
+                        break
+                    repair_resp = self.responses[self._index]
+                    self._index += 1
+                    self.calls.append(
+                        RecordedCall(
+                            messages=list(messages),
+                            output_model=output_model,
+                            config=config,
+                        )
+                    )
+                    if isinstance(repair_resp, Exception):
+                        raise repair_resp from first_error
+                    if isinstance(repair_resp, output_model):
+                        return repair_resp
+                    if isinstance(repair_resp, Mapping):
+                        try:
+                            return output_model.model_validate(dict(repair_resp))
+                        except ValidationError as repair_err:
+                            errors = summarize_validation_error(repair_err)
+                            continue
+                msg = (
+                    f"model did not return valid {output_model.__name__} "
+                    f"after repair attempts: {errors}"
+                )
+                raise ModelOutputInvalid(msg) from first_error
         if not isinstance(response, output_model):
             raise TypeError(
                 f"FakeModelClient queued {type(response).__name__} "

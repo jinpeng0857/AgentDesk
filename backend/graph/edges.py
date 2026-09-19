@@ -44,6 +44,8 @@ def advance_dispatch(
     """
     current_status = state["status"]
     if current_status in TERMINAL_STATUSES:
+        if current_status == TicketStatus.ESCALATED and actor == "dispatcher":
+            return state
         raise ValueError(
             f"Cannot advance ticket in terminal state '{current_status}'. "
             "Terminal states are immutable."

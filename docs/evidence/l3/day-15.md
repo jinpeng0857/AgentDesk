@@ -1,8 +1,8 @@
-﻿# Day 15 Acceptance
+# Day 15 Acceptance
 
 - Date (UTC+8): 2026-09-19
 - Goal: LangGraph interrupt/resume 与审批节点
-- Commit SHA: pending
+- Commit SHA: `267b7bb`
 - Changed files:
   - backend/graph/nodes.py
   - backend/graph/builder.py

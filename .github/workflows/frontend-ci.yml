@@ -1,0 +1,47 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Verify TypeScript API Types Drift
+        run: |
+          cd frontend
+          npm run generate:api-types
+          git diff --exit-code -- src/types/api.d.ts
+
+      - name: Run Type Check
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: Run Tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Run Production Build
+        working-directory: frontend
+        run: npm run build

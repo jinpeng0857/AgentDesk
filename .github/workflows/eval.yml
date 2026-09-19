@@ -1,0 +1,81 @@
+name: Evaluation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Evaluation stage"
+        required: true
+        default: "e2e-candidate"
+        type: choice
+        options:
+          - model-baseline
+          - e2e-candidate
+
+jobs:
+  offline-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Offline Eval Harness Smoke
+        run: >
+          uv run python eval/run_eval.py
+          --mode offline
+          --stage model-baseline
+          --output eval/artifacts/offline-ci-run.json
+
+      - name: Upload Offline Eval Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-eval-artifact
+          path: eval/artifacts/offline-ci-run.json
+
+  live-eval:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: evaluation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Live Eval Candidate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+        run: >
+          uv run python eval/run_eval.py
+          --mode live
+          --stage ${{ github.event.inputs.stage }}
+          --compare eval/artifacts/phase1-before.json
+          --output eval/artifacts/phase1-candidate.json
+
+      - name: Upload Live Candidate Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-eval-candidate
+          path: eval/artifacts/phase1-candidate.json

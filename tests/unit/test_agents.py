@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agents.action import select_action
+from agents.action import create_pending_operation, select_action
 from agents.context import ModelCallConfig
 from agents.knowledge import ground_knowledge
 from agents.policy import PHASE1_READ_TOOLS, WriteCapabilityDisabled, assess_phase1_read
@@ -23,7 +23,7 @@ from agents.schemas import (
 from agents.supervisor import finalize_ticket, run_supervisor
 from tests.fakes.model_client import FakeModelClient
 from tools.registry import TOOL_REGISTRY
-from tools.schemas import CheckServiceArgs, QueryUserArgs, WriteToolName
+from tools.schemas import CheckServiceArgs, CreateTicketArgs, QueryUserArgs, WriteToolName
 
 CONFIG = ModelCallConfig(model="test-model", prompt_version="1.0.0")
 SYSTEM_PROMPT = "You are the AgentDesk Supervisor."
@@ -272,6 +272,38 @@ async def test_action_returns_the_model_proposal_unchanged() -> None:
     )
 
     assert output == proposal
+
+
+def test_create_pending_operation_produces_valid_contract() -> None:
+    proposal = ActionProposal(
+        tool_name="create_ticket",
+        arguments=CreateTicketArgs(
+            requester_id="usr-1",
+            title="T",
+            description="D",
+            source_ticket_id="src-1",
+        ),
+        evidence_result_ids=["res-1"],
+    )
+    pending = create_pending_operation(proposal)
+    assert pending.operation_id.startswith("op-")
+    assert pending.tool_name == "create_ticket"
+    assert pending.side_effects == "write"
+    assert pending.proposed_by == "action"
+    assert len(pending.args_hash) == 64
+    assert pending.evidence_result_ids == ["res-1"]
+
+
+def test_create_pending_operation_refuses_read_tools() -> None:
+    proposal = ActionProposal(
+        tool_name="query_user",
+        arguments=QueryUserArgs(user_id="usr-1"),
+        evidence_result_ids=[],
+    )
+    with pytest.raises(
+        ValueError, match="Cannot create PendingOperation for non-write tool"
+    ):
+        create_pending_operation(proposal)
 
 
 # --------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 - Date (UTC+8): 2026-09-19
 - Goal: Phase 2 数据模型与空库迁移（操作账本、审批表与业务写结果表）
-- Commit SHA: `PENDING_COMMIT_SHA`
+- Commit SHA: `ca58ffd`
 - Changed files:
   - `eval/artifacts/phase2-before.json` (baseline frozen at `c44a5e7` before Phase 2 code changes)
   - `backend/db/models.py`

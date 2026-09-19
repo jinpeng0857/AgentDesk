@@ -2,7 +2,7 @@
 
 - Date (UTC+8): 2026-09-19
 - Goal: 节点闭包与只读 LangGraph
-- Commit SHA: pending commit
+- Commit SHA: `6ea5451`
 - Changed files:
   - `backend/graph/nodes.py`
   - `backend/graph/builder.py`

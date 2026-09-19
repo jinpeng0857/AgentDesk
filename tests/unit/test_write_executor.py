@@ -252,7 +252,7 @@ async def test_unknown_tool_refused_before_adapter() -> None:
 
     result = await harness.executor.execute(
         agent_id="action",
-        operation=fake_pending,  # type: ignore[arg-type]
+        operation=fake_pending,
         actor=AUTH_ACTOR,
     )
 

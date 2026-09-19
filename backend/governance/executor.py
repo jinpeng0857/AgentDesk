@@ -36,6 +36,7 @@ from agents.schemas import (
 )
 from backend.db.repositories.operations import OperationRepository
 from backend.governance.audit import AuditSink, ToolAttempt, redact_mapping
+from backend.governance.encryption import ResultEncryptor
 from backend.governance.idempotency import (
     canonical_json,
     compute_args_hash,
@@ -332,6 +333,7 @@ class WriteToolExecutor:
         trace_id: uuid.UUID,
         operation_repo: OperationRepository | None = None,
         registry: Mapping[str, ToolSpec] = TOOL_REGISTRY,
+        encryptor: ResultEncryptor | None = None,
     ) -> None:
         self._adapters = adapters
         self._audit = audit
@@ -339,6 +341,7 @@ class WriteToolExecutor:
         self._trace_id = trace_id
         self._operation_repo = operation_repo
         self._registry = registry
+        self._encryptor = encryptor or ResultEncryptor()
 
     async def execute(
         self,
@@ -602,9 +605,10 @@ class WriteToolExecutor:
         result_dict = data.model_dump(mode="python")
         result_summary = redact_mapping(result_dict)
         if self._operation_repo is not None:
+            encrypted_payload = self._encryptor.encrypt(canonical_json(result_dict))
             await self._operation_repo.record_success(
                 idempotency_key,
-                encrypted_result=canonical_json(result_dict),
+                encrypted_result=encrypted_payload,
                 result_summary=result_summary,
             )
 
@@ -650,10 +654,17 @@ class WriteToolExecutor:
         enc = getattr(existing, "encrypted_result", None)
         if enc:
             with contextlib.suppress(Exception):
+                decrypted = self._encryptor.decrypt(enc)
                 cached_data = cast(
                     ToolResultUnion,
-                    result_model.model_validate(json.loads(enc)),
+                    result_model.model_validate(json.loads(decrypted)),
                 )
+            if cached_data is None:
+                with contextlib.suppress(Exception):
+                    cached_data = cast(
+                        ToolResultUnion,
+                        result_model.model_validate(json.loads(enc)),
+                    )
         if cached_data is None:
             summary_dict = getattr(existing, "result_summary", None)
             if summary_dict:

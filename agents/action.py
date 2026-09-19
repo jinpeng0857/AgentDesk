@@ -52,6 +52,7 @@ async def select_action(
 def create_pending_operation(
     proposal: ActionProposal,
     *,
+    operation_id: str | None = None,
     evidence_result_ids: list[str] | None = None,
     schema_version: str = "1.0.0",
 ) -> PendingOperation:
@@ -72,8 +73,9 @@ def create_pending_operation(
         if evidence_result_ids is not None
         else proposal.evidence_result_ids
     )
+    op_id = operation_id or generate_operation_id()
     return PendingOperation(
-        operation_id=generate_operation_id(),
+        operation_id=op_id,
         tool_name=cast(WriteToolName, proposal.tool_name),
         validated_args=proposal.arguments,
         args_hash=compute_args_hash(proposal.arguments),

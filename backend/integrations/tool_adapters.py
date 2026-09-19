@@ -7,12 +7,15 @@ there is nothing to accidentally enable by flipping a flag.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import UTC, datetime
 
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.policy import WriteCapabilityDisabled
+from backend.auth.passwords import hash_password
 from backend.db.models import (
     AccessRequestRecord,
     DownstreamTicketRecord,
@@ -47,16 +50,13 @@ __all__ = [
     "DisabledRefundService",
     "DisabledTicketService",
     "SqlAccessRequestService",
+    "SqlCredentialService",
     "SqlOrderRepository",
     "SqlServiceRepository",
     "SqlTicketService",
     "SqlUserRepository",
     "WriteCapabilityDisabled",
 ]
-
-# Accounts carry no version column until account mutation exists in the write
-# phase, so the read model reports a stable version of 1.
-STATIC_ACCOUNT_VERSION = 1
 
 
 class SqlUserRepository:
@@ -73,7 +73,7 @@ class SqlUserRepository:
                 AccountStatus.ACTIVE if record.active else AccountStatus.INACTIVE
             ),
             masked_email=record.masked_email,
-            version=STATIC_ACCOUNT_VERSION,
+            version=record.version,
         )
 
 
@@ -222,4 +222,35 @@ class SqlAccessRequestService:
             access_request_id=access_id,
             status=WriteResultStatus.CREATED,
         )
+
+
+class SqlCredentialService:
+    """Resets user credential in PostgreSQL and generates temporary password."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def reset_password(self, args: ResetPasswordArgs) -> ResetPasswordResult:
+        user = await self._session.get(UserRecord, args.user_id)
+        if user is None:
+            raise LookupError(f"user {args.user_id} does not exist")
+        if not user.active:
+            raise PermissionError(f"cannot reset password for inactive user {args.user_id}")
+
+        if args.account_version != user.version:
+            raise ValueError(
+                f"account version mismatch: expected {user.version}, got {args.account_version}"
+            )
+
+        temp_password = f"Tmp-{secrets.token_urlsafe(12)}"
+        user.password_hash = hash_password(SecretStr(temp_password))
+        user.version = user.version + 1
+        await self._session.flush()
+
+        return ResetPasswordResult(
+            user_id=user.id,
+            temporary_password=SecretStr(temp_password),
+            credential_version=user.version,
+        )
+
 

@@ -7,12 +7,19 @@ there is nothing to accidentally enable by flipping a flag.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.policy import WriteCapabilityDisabled
-from backend.db.models import OrderRecord, ServiceStatusRecord, UserRecord
+from backend.db.models import (
+    AccessRequestRecord,
+    DownstreamTicketRecord,
+    OrderRecord,
+    ServiceStatusRecord,
+    UserRecord,
+)
 from tools.schemas import (
     AccountStatus,
     CheckServiceArgs,
@@ -31,6 +38,7 @@ from tools.schemas import (
     ResetPasswordArgs,
     ResetPasswordResult,
     ServiceStatus,
+    WriteResultStatus,
 )
 
 __all__ = [
@@ -38,8 +46,10 @@ __all__ = [
     "DisabledCredentialService",
     "DisabledRefundService",
     "DisabledTicketService",
+    "SqlAccessRequestService",
     "SqlOrderRepository",
     "SqlServiceRepository",
+    "SqlTicketService",
     "SqlUserRepository",
     "WriteCapabilityDisabled",
 ]
@@ -150,3 +160,66 @@ class DisabledAccessRequestService(_DisabledWriteCapability):
         del args
         self._refuse()
         raise AssertionError("unreachable")
+
+
+class SqlTicketService:
+    """Creates downstream tickets persisted to PostgreSQL."""
+
+    def __init__(self, session: AsyncSession, ticket_id: uuid.UUID | None = None) -> None:
+        self._session = session
+        self._ticket_id = ticket_id
+
+    async def create_ticket(self, args: CreateTicketArgs) -> CreateTicketResult:
+        source_id: uuid.UUID
+        try:
+            source_id = uuid.UUID(args.source_ticket_id)
+        except (ValueError, TypeError) as err:
+            if self._ticket_id is not None:
+                source_id = self._ticket_id
+            else:
+                raise ValueError(f"invalid source_ticket_id: {args.source_ticket_id!r}") from err
+
+        downstream_id = f"dt-{uuid.uuid4().hex[:12]}"
+        record = DownstreamTicketRecord(
+            id=downstream_id,
+            source_ticket_id=source_id,
+            requester_id=args.requester_id,
+            title=args.title,
+            description=args.description,
+            status="created",
+        )
+        self._session.add(record)
+        await self._session.flush()
+        return CreateTicketResult(
+            downstream_ticket_id=downstream_id,
+            status=WriteResultStatus.CREATED,
+        )
+
+
+class SqlAccessRequestService:
+    """Creates access requests persisted to PostgreSQL (never directly grants access)."""
+
+    def __init__(self, session: AsyncSession, ticket_id: uuid.UUID | None = None) -> None:
+        self._session = session
+        self._ticket_id = ticket_id
+
+    async def request_access(self, args: RequestAccessArgs) -> RequestAccessResult:
+        if self._ticket_id is None:
+            raise ValueError("SqlAccessRequestService requires a valid ticket_id")
+
+        access_id = f"ar-{uuid.uuid4().hex[:12]}"
+        record = AccessRequestRecord(
+            id=access_id,
+            ticket_id=self._ticket_id,
+            requester_id=args.requester_id,
+            resource=args.resource,
+            justification=args.justification,
+            status="created",
+        )
+        self._session.add(record)
+        await self._session.flush()
+        return RequestAccessResult(
+            access_request_id=access_id,
+            status=WriteResultStatus.CREATED,
+        )
+

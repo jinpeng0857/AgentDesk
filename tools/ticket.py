@@ -8,11 +8,23 @@ capabilities (``create_ticket``, ``request_access``, ``reset_password``,
 
 from __future__ import annotations
 
-from tools.context import OrderRepository
-from tools.schemas import QueryOrderArgs, QueryOrderResult
+from tools.context import OrderRepository, TicketService
+from tools.schemas import (
+    CreateTicketArgs,
+    CreateTicketResult,
+    QueryOrderArgs,
+    QueryOrderResult,
+)
 
 
 async def query_order(
     args: QueryOrderArgs, repository: OrderRepository
 ) -> QueryOrderResult:
     return await repository.query_order(args)
+
+
+async def create_ticket(
+    args: CreateTicketArgs, service: TicketService
+) -> CreateTicketResult:
+    return await service.create_ticket(args)
+

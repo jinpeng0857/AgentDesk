@@ -385,10 +385,16 @@ class WriteToolExecutor:
         request_id = uuid.uuid4().hex
         started = perf_counter()
 
-        tool_name = getattr(operation, "tool_name", "")
-        operation_id = getattr(operation, "operation_id", None)
-        raw_args = getattr(operation, "validated_args", None)
-        args_hash = getattr(operation, "args_hash", None)
+        if isinstance(operation, Mapping):
+            tool_name = str(operation.get("tool_name", ""))
+            operation_id = operation.get("operation_id")
+            raw_args = operation.get("validated_args") or operation.get("arguments")
+            args_hash = operation.get("args_hash")
+        else:
+            tool_name = getattr(operation, "tool_name", "")
+            operation_id = getattr(operation, "operation_id", None)
+            raw_args = getattr(operation, "validated_args", None)
+            args_hash = getattr(operation, "args_hash", None)
 
         spec = self._registry.get(tool_name)
         if spec is None:
@@ -413,6 +419,17 @@ class WriteToolExecutor:
                 started,
             )
 
+        if spec.side_effects != "write":
+            return await self._refuse(
+                request_id,
+                agent_id,
+                tool_name,
+                operation_id,
+                raw_args,
+                ERROR_NOT_PERMITTED,
+                started,
+            )
+
         if tool_name not in TOOL_MODEL_PAIRS:
             return await self._refuse(
                 request_id,
@@ -424,7 +441,7 @@ class WriteToolExecutor:
                 started,
             )
 
-        input_model, result_model = TOOL_MODEL_PAIRS[cast(ToolName, tool_name)]
+        input_model, result_model = TOOL_MODEL_PAIRS[tool_name]
         if isinstance(raw_args, BaseModel):
             validated = raw_args
         else:
@@ -609,7 +626,7 @@ class WriteToolExecutor:
                     return ToolResult(
                         request_id=request_id,
                         operation_id=operation_id,
-                        tool_name=cast(ToolName, tool_name),
+                        tool_name=tool_name,
                         outcome=ToolOutcome.TIMED_OUT,
                         data=None,
                         error_code=ERROR_TIMEOUT,
@@ -686,7 +703,7 @@ class WriteToolExecutor:
         return ToolResult(
             request_id=request_id,
             operation_id=operation_id,
-            tool_name=cast(ToolName, tool_name),
+            tool_name=tool_name,
             outcome=ToolOutcome.SUCCEEDED,
             data=cast(ToolResultUnion, data),
             error_code=None,
@@ -731,9 +748,7 @@ class WriteToolExecutor:
                     )
         latency_ms = _elapsed_ms(started)
         res_summary = getattr(existing, "result_summary", None) or (
-            redact_mapping(cached_data.model_dump(mode="python"))
-            if cached_data
-            else {}
+            redact_mapping(cached_data.model_dump(mode="python")) if cached_data else {}
         )
         await self._audit.record(
             ToolAttempt(
@@ -861,4 +876,3 @@ class WriteToolExecutor:
             case CheckServiceArgs():
                 return await adapters.service.check_service(args)
         raise ValueError(f"no adapter mapping for {tool_name!r}")
-

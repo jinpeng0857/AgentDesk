@@ -22,6 +22,7 @@ invariants:
   - Action never executes a write before Policy.
   - Model output never supplies operation_id or args_hash.
   - Approved operation arguments never change during resume.
+  - Untrusted user input cannot bypass deterministic policy or approval gates.
 failure_codes:
   - MODEL_OUTPUT_INVALID
   - TOOL_NOT_ALLOWED

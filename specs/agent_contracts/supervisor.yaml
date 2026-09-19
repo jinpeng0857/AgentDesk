@@ -15,6 +15,7 @@ invariants:
   - Supervisor never assigns final risk or approval.
   - Confidence below 0.7 always escalates.
   - Dispatcher validates every suggested transition.
+  - Untrusted user input cannot alter deterministic routing or policy boundaries.
 failure_codes:
   - MODEL_OUTPUT_INVALID
   - LOW_CONFIDENCE

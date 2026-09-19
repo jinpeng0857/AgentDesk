@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -54,6 +55,18 @@ TOOL_OUTCOMES = (
 USER_ROLES = ("requester", "approver")
 ORDER_STATUSES = ("pending", "paid", "refunded", "cancelled")
 SERVICE_STATUSES = ("operational", "degraded", "outage")
+TOOL_OPERATION_STATUSES = (
+    "pending",
+    "running",
+    "succeeded",
+    "failed_retryable",
+    "failed_final",
+    "rejected",
+)
+APPROVAL_STATUSES = ("pending", "approved", "rejected", "expired")
+REFUND_STATUSES = ("succeeded", "failed")
+ACCESS_REQUEST_STATUSES = ("created", "approved", "rejected")
+DOWNSTREAM_TICKET_STATUSES = ("created", "resolved", "failed")
 
 
 def _in_list(column: str, values: tuple[str, ...]) -> str:
@@ -69,7 +82,10 @@ def _utcnow() -> datetime:
 
 class UserRecord(Base):
     __tablename__ = "users"
-    __table_args__ = (CheckConstraint(_in_list("role", USER_ROLES), name="role_valid"),)
+    __table_args__ = (
+        CheckConstraint(_in_list("role", USER_ROLES), name="role_valid"),
+        CheckConstraint("version >= 1", name="user_version_positive"),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     username: Mapped[str] = mapped_column(String(128), unique=True, index=True)
@@ -77,6 +93,7 @@ class UserRecord(Base):
     role: Mapped[str] = mapped_column(String(16))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     masked_email: Mapped[str] = mapped_column(String(254))
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
     )
@@ -228,3 +245,119 @@ class JobOutboxRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
     )
+
+
+class ToolOperationRecord(Base):
+    __tablename__ = "tool_operations"
+    __table_args__ = (
+        CheckConstraint(_in_list("status", TOOL_OPERATION_STATUSES), name="tool_op_status_valid"),
+        UniqueConstraint("idempotency_key", name="tool_op_idempotency_key_unique"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tickets.id"), index=True)
+    operation_id: Mapped[str] = mapped_column(String(128), index=True)
+    tool_name: Mapped[str] = mapped_column(String(64), index=True)
+    args_hash: Mapped[str] = mapped_column(String(64))
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True, default="pending")
+    lease_holder: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    encrypted_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_summary: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, server_default=func.now()
+    )
+
+
+class ApprovalRecord(Base):
+    __tablename__ = "approvals"
+    __table_args__ = (
+        CheckConstraint(_in_list("status", APPROVAL_STATUSES), name="approval_status_valid"),
+        CheckConstraint(_in_list("risk_level", RISK_LEVELS), name="approval_risk_level_valid"),
+        CheckConstraint("version >= 1", name="approval_version_positive"),
+        UniqueConstraint("operation_id", name="approval_operation_unique"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tickets.id"), index=True)
+    operation_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    tool_name: Mapped[str] = mapped_column(String(64))
+    risk_level: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(24), index=True, default="pending")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    args_hash: Mapped[str] = mapped_column(String(64))
+    args_summary: Mapped[list[dict[str, object]] | dict[str, object]] = mapped_column(JSONB)
+    reason_code: Mapped[str] = mapped_column(String(128))
+    reason: Mapped[str | None] = mapped_column(String(1_000), nullable=True)
+    approver_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RefundRecord(Base):
+    __tablename__ = "refunds"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="refund_amount_positive"),
+        CheckConstraint("currency = 'USD'", name="refund_currency_usd"),
+        CheckConstraint(_in_list("status", REFUND_STATUSES), name="refund_status_valid"),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tickets.id"), index=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
+    requester_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    status: Mapped[str] = mapped_column(String(32), default="succeeded")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
+class AccessRequestRecord(Base):
+    __tablename__ = "access_requests"
+    __table_args__ = (
+        CheckConstraint(
+            _in_list("status", ACCESS_REQUEST_STATUSES), name="access_request_status_valid"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tickets.id"), index=True)
+    requester_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    resource: Mapped[str] = mapped_column(String(200))
+    justification: Mapped[str] = mapped_column(String(2_000))
+    status: Mapped[str] = mapped_column(String(32), default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
+class DownstreamTicketRecord(Base):
+    __tablename__ = "downstream_tickets"
+    __table_args__ = (
+        CheckConstraint(
+            _in_list("status", DOWNSTREAM_TICKET_STATUSES),
+            name="downstream_ticket_status_valid",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_ticket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tickets.id"), index=True)
+    requester_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(String(2_000))
+    status: Mapped[str] = mapped_column(String(32), default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+

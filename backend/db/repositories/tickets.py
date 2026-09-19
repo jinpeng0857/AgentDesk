@@ -122,3 +122,13 @@ class TicketRepository:
             await self._session.execute(event)
 
         await self._session.flush()
+
+    async def list_trace_events(
+        self, ticket_id: uuid.UUID
+    ) -> list[TraceEventRecord]:
+        result = await self._session.execute(
+            select(TraceEventRecord)
+            .where(TraceEventRecord.ticket_id == ticket_id)
+            .order_by(TraceEventRecord.timestamp.asc(), TraceEventRecord.request_id.asc())
+        )
+        return list(result.scalars().all())

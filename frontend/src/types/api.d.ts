@@ -394,6 +394,19 @@ export interface components {
          * @enum {string}
          */
         Intent: "network" | "account" | "permission" | "query" | "high_risk";
+        /** KnowledgeRefResponse */
+        KnowledgeRefResponse: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Content Excerpt */
+            content_excerpt: string;
+            /** Document Id */
+            document_id: string;
+            /** Score */
+            score: number;
+            /** Title */
+            title: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -438,6 +451,8 @@ export interface components {
             /** Final Response */
             final_response: string | null;
             intent: components["schemas"]["Intent"] | null;
+            /** Knowledge Refs */
+            knowledge_refs?: components["schemas"]["KnowledgeRefResponse"][];
             /** Requester Id */
             requester_id: string;
             /** Resolution Mode */
@@ -799,8 +814,8 @@ export interface operations {
                     "application/json": components["schemas"]["TicketSummaryResponse"][];
                 };
             };
-            /** @description Contract only */
-            501: {
+            /** @description Authentication failed */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -881,6 +896,24 @@ export interface operations {
                     "application/json": components["schemas"]["TicketDetailResponse"];
                 };
             };
+            /** @description Authentication failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -888,15 +921,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Contract only */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -921,6 +945,24 @@ export interface operations {
                     "application/json": components["schemas"]["TraceEventResponse"][];
                 };
             };
+            /** @description Authentication failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -928,15 +970,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Contract only */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

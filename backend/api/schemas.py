@@ -62,10 +62,19 @@ class TicketSummaryResponse(ApiModel):
     updated_at: AwareDatetime
 
 
+class KnowledgeRefResponse(ApiModel):
+    document_id: Identifier
+    chunk_id: Identifier
+    title: Annotated[str, Field(min_length=1, max_length=200)]
+    content_excerpt: Annotated[str, Field(min_length=1, max_length=1_000)]
+    score: float = Field(ge=0.0, le=1.0)
+
+
 class TicketDetailResponse(TicketSummaryResponse):
     requester_id: Identifier
     resolution_mode: Literal["automated", "fallback", "human_required"] | None
     final_response: Annotated[str, Field(max_length=4_000)] | None
+    knowledge_refs: list[KnowledgeRefResponse] = Field(default_factory=list)
 
 
 class TraceEventResponse(ApiModel):

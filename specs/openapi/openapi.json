@@ -474,6 +474,50 @@
         "title": "Intent",
         "type": "string"
       },
+      "KnowledgeRefResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "chunk_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "content_excerpt": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content Excerpt",
+            "type": "string"
+          },
+          "document_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Id",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "chunk_id",
+          "title",
+          "content_excerpt",
+          "score"
+        ],
+        "title": "KnowledgeRefResponse",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -598,6 +642,13 @@
                 "type": "null"
               }
             ]
+          },
+          "knowledge_refs": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRefResponse"
+            },
+            "title": "Knowledge Refs",
+            "type": "array"
           },
           "requester_id": {
             "maxLength": 128,
@@ -1196,7 +1247,7 @@
             },
             "description": "Successful Response"
           },
-          "501": {
+          "401": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1204,7 +1255,7 @@
                 }
               }
             },
-            "description": "Contract only"
+            "description": "Authentication failed"
           }
         },
         "summary": "List Tickets",
@@ -1297,6 +1348,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Ticket not found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1306,16 +1377,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Contract only"
           }
         },
         "summary": "Get Ticket",
@@ -1353,6 +1414,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Authentication failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Ticket not found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1362,16 +1443,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Contract only"
           }
         },
         "summary": "Get Ticket Trace",

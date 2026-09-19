@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import JobOutboxRecord
 
 START_TICKET_JOB = "start_ticket"
+RESUME_TICKET_JOB = "resume_ticket"
 
 
 class OutboxRepository:
@@ -29,6 +30,19 @@ class OutboxRepository:
             ticket_id=ticket_id,
             job_name=START_TICKET_JOB,
             payload={"ticket_id": str(ticket_id)},
+            dedupe_key=dedupe_key,
+        )
+        self._session.add(record)
+        await self._session.flush()
+        return record
+
+    async def enqueue_resume_ticket(
+        self, *, ticket_id: uuid.UUID, approval_id: uuid.UUID, dedupe_key: str
+    ) -> JobOutboxRecord:
+        record = JobOutboxRecord(
+            ticket_id=ticket_id,
+            job_name=RESUME_TICKET_JOB,
+            payload={"ticket_id": str(ticket_id), "approval_id": str(approval_id)},
             dedupe_key=dedupe_key,
         )
         self._session.add(record)

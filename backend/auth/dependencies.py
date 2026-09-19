@@ -8,6 +8,7 @@ from fastapi import Depends, Request
 
 from agents.schemas import ActorContext
 from backend.api.dependencies import SessionDep, SettingsDep
+from backend.api.errors import ApiError
 from backend.auth.jwt import AuthenticationError, decode_access_token
 from backend.db.repositories.users import UserRepository
 
@@ -37,3 +38,17 @@ async def get_current_actor(
 
 
 CurrentActor = Annotated[ActorContext, Depends(get_current_actor)]
+
+
+def require_approver(actor: CurrentActor) -> ActorContext:
+    if actor.role != "approver":
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Only approvers can access approvals",
+        )
+    return actor
+
+
+ApproverActor = Annotated[ActorContext, Depends(require_approver)]
+

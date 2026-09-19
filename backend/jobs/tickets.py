@@ -32,11 +32,17 @@ from backend.integrations.tool_adapters import (
 from backend.jobs.context import WorkerContext
 
 START_TICKET_JOB = "start_ticket"
+RESUME_TICKET_JOB = "resume_ticket"
 
 
 def start_job_id(ticket_id: str) -> str:
     """Deterministic job ID: repeat delivery cannot create a second logical run."""
     return f"start:{ticket_id}"
+
+
+def resume_job_id(approval_id: str, version: int) -> str:
+    """Deterministic job ID: repeat delivery cannot create a second logical resume run."""
+    return f"resume:{approval_id}:{version}"
 
 
 def worker_context(ctx: dict[str, Any]) -> WorkerContext:

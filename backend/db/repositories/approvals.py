@@ -42,6 +42,13 @@ class ApprovalRepository:
         )
         return list(result.scalars().all())
 
+    async def list_all(self, *, status: str | None = None) -> list[ApprovalRecord]:
+        query = select(ApprovalRecord).order_by(ApprovalRecord.created_at.desc(), ApprovalRecord.id)
+        if status is not None:
+            query = query.where(ApprovalRecord.status == status)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
     async def list_for_ticket(self, ticket_id: uuid.UUID) -> list[ApprovalRecord]:
         result = await self._session.execute(
             select(ApprovalRecord)

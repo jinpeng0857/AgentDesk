@@ -100,7 +100,8 @@ async def test_login_and_submission_work_over_the_real_app(
 async def test_stubbed_routes_still_return_501_over_the_real_app(
     live_client: AsyncClient,
 ) -> None:
-    response = await live_client.get("/api/approvals")
+    response = await live_client.get("/api/eval/runs")
 
     assert response.status_code == 501
     assert response.json()["error"]["code"] == "NOT_IMPLEMENTED"
+

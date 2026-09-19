@@ -189,7 +189,25 @@ class OpenAICompatibleModelClient:
             if response_format.get("type") == "json_schema" and (
                 mentions_unsupported_response_format(exc)
             ):
-                return await self._request(messages, config, {"type": "json_object"})
+                fallback_messages = list(messages)
+                if not any("json" in m.content.lower() for m in fallback_messages):
+                    if fallback_messages and fallback_messages[0].role == "system":
+                        fallback_messages[0] = ModelMessage(
+                            role="system",
+                            content=(
+                                fallback_messages[0].content
+                                + "\n\nYou must respond with a valid JSON object"
+                                " matching the required schema."
+                            ),
+                        )
+                    else:
+                        fallback_messages.append(
+                            ModelMessage(
+                                role="user",
+                                content="Output your response in valid JSON format.",
+                            )
+                        )
+                return await self._request(fallback_messages, config, {"type": "json_object"})
             raise ModelConfigurationError(
                 "model provider rejected the request shape"
             ) from exc

@@ -2,7 +2,7 @@
 
 - Date (UTC+8): 2026-09-19
 - Goal: Worker 独占执行与 PostgreSQL checkpoint 恢复
-- Commit SHA: pending commit
+- Commit SHA: `1e5018b`
 - Changed files:
   - `backend/jobs/context.py`
   - `backend/jobs/tickets.py`

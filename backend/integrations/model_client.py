@@ -73,7 +73,12 @@ def summarize_validation_error(error: ValidationError) -> str:
 
 def mentions_unsupported_response_format(error: openai.BadRequestError) -> bool:
     text = f"{error.message} {error}".lower()
-    negative = "not supported" in text or "unsupported" in text or "does not support" in text
+    negative = (
+        "not supported" in text
+        or "unsupported" in text
+        or "does not support" in text
+        or "unavailable" in text
+    )
     return negative and ("json_schema" in text or "response_format" in text)
 
 

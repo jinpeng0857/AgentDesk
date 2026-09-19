@@ -2,7 +2,7 @@
 
 - Date (UTC+8): 2026-09-19
 - Goal: 确定性 Policy 风险矩阵与授权规则
-- Commit SHA: `PENDING_COMMIT_SHA`
+- Commit SHA: `ef636f0`
 - Changed files:
   - `agents/policy.py`
   - `agents/action.py`

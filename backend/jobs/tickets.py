@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -15,6 +16,7 @@ from agents.context import ModelClient
 from agents.schemas import TicketStatus
 from backend.config import AppSettings
 from backend.db.models import TicketRecord
+from backend.db.repositories.approvals import ApprovalConflictError, ApprovalRepository
 from backend.db.repositories.audit import AuditRepository
 from backend.db.repositories.tickets import TicketRepository
 from backend.governance.audit import ToolAttempt
@@ -183,6 +185,18 @@ class GraphTicketRunner:
                 TicketStatus.EXPIRED,
             ):
                 return current_status
+
+            appr_repo = ApprovalRepository(session)
+            approval_rec = await appr_repo.get_by_id(approval_id)
+            if approval_rec is None:
+                raise LookupError(f"Approval {approval_id} does not exist")
+            now = datetime.now(UTC)
+            if approval_rec.expires_at <= now or approval_rec.status == "expired":
+                raise ApprovalConflictError(f"Approval {approval_id} has expired")
+            if approval_rec.status not in ("approved", "rejected"):
+                raise ApprovalConflictError(
+                    f"Approval {approval_id} is in status {approval_rec.status}, cannot resume"
+                )
 
         config = {"configurable": {"thread_id": thread_id}}
 

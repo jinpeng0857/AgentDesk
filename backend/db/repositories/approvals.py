@@ -93,11 +93,12 @@ class ApprovalRepository:
         decision: Literal["approve", "reject"],
         approver_id: str,
         reason: str | None = None,
+        now: datetime | None = None,
     ) -> ApprovalRecord:
         if isinstance(approval_id, str):
             approval_id = uuid.UUID(approval_id)
 
-        now = datetime.now(UTC)
+        current_time = now or datetime.now(UTC)
         new_status = "approved" if decision == "approve" else "rejected"
 
         stmt = (
@@ -106,14 +107,14 @@ class ApprovalRepository:
                 ApprovalRecord.id == approval_id,
                 ApprovalRecord.version == expected_version,
                 ApprovalRecord.status == "pending",
-                ApprovalRecord.expires_at > now,
+                ApprovalRecord.expires_at > current_time,
             )
             .values(
                 status=new_status,
                 version=ApprovalRecord.version + 1,
                 approver_id=approver_id,
                 reason=reason,
-                decided_at=now,
+                decided_at=current_time,
             )
             .returning(ApprovalRecord)
         )
@@ -130,7 +131,7 @@ class ApprovalRepository:
             raise ApprovalConflictError(
                 f"approval {approval_id} has already transitioned to {existing.status}"
             )
-        if existing.expires_at <= now:
+        if existing.expires_at <= current_time:
             raise ApprovalConflictError(f"approval {approval_id} has expired")
         if existing.version != expected_version:
             raise ApprovalConflictError(

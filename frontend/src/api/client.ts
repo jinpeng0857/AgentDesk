@@ -6,6 +6,10 @@
 
 import type {
   ActorResponse,
+  ApprovalDecisionRequest,
+  ApprovalDecisionResponse,
+  ApprovalDetailResponse,
+  ApprovalSummaryResponse,
   ErrorEnvelope,
   LoginRequest,
   TicketAcceptedResponse,
@@ -35,6 +39,12 @@ export interface ApiClientLike {
   listTickets(): Promise<TicketSummaryResponse[]>
   getTicket(ticketId: string, signal?: AbortSignal): Promise<TicketDetailResponse>
   getTicketTrace(ticketId: string): Promise<TraceEventResponse[]>
+  listApprovals(status?: string): Promise<ApprovalSummaryResponse[]>
+  getApproval(approvalId: string): Promise<ApprovalDetailResponse>
+  decideApproval(
+    approvalId: string,
+    decision: ApprovalDecisionRequest,
+  ): Promise<ApprovalDecisionResponse>
 }
 
 export class ApiClient implements ApiClientLike {
@@ -122,6 +132,29 @@ export class ApiClient implements ApiClientLike {
   async getTicketTrace(ticketId: string): Promise<TraceEventResponse[]> {
     return this.request<TraceEventResponse[]>(`/api/tickets/${ticketId}/trace`, {
       method: 'GET',
+    })
+  }
+
+  async listApprovals(status?: string): Promise<ApprovalSummaryResponse[]> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : ''
+    return this.request<ApprovalSummaryResponse[]>(`/api/approvals${query}`, {
+      method: 'GET',
+    })
+  }
+
+  async getApproval(approvalId: string): Promise<ApprovalDetailResponse> {
+    return this.request<ApprovalDetailResponse>(`/api/approvals/${approvalId}`, {
+      method: 'GET',
+    })
+  }
+
+  async decideApproval(
+    approvalId: string,
+    decision: ApprovalDecisionRequest,
+  ): Promise<ApprovalDecisionResponse> {
+    return this.request<ApprovalDecisionResponse>(`/api/approvals/${approvalId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify(decision),
     })
   }
 }

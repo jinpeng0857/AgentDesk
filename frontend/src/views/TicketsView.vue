@@ -66,12 +66,23 @@ function handleLogout(): void {
   authStore.logout()
   router.push('/login')
 }
+
+function goToApprovals(): void {
+  router.push('/approvals')
+}
 </script>
 
 <template>
   <div class="tickets-layout">
     <header class="navbar">
-      <div class="brand">AgentDesk IT Service Desk</div>
+      <div class="brand-group">
+        <span class="brand">AgentDesk</span>
+        <span class="sub-brand">IT Service Desk</span>
+      </div>
+      <div v-if="authStore.user?.role === 'approver'" class="nav-links">
+        <button class="nav-btn active">Tickets</button>
+        <button class="nav-btn" @click="goToApprovals">Approvals</button>
+      </div>
       <div class="user-info">
         <span v-if="authStore.user" class="username">
           {{ authStore.user.user_id }} ({{ authStore.user.role }})
@@ -243,9 +254,46 @@ function handleLogout(): void {
   padding: 0.75rem 1.5rem;
 }
 
+.brand-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
 .brand {
   font-weight: 700;
   font-size: 1.125rem;
+}
+
+.sub-brand {
+  font-size: 0.875rem;
+  color: #a0aec0;
+}
+
+.nav-links {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nav-btn {
+  background: transparent;
+  color: #cbd5e0;
+  border: none;
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.nav-btn:hover {
+  background-color: #4a5568;
+  color: white;
+}
+
+.nav-btn.active {
+  background-color: #4a5568;
+  color: white;
+  font-weight: 600;
 }
 
 .user-info {

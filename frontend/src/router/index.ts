@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import LoginView from '../views/LoginView.vue'
 import TicketsView from '../views/TicketsView.vue'
+import ApprovalView from '../views/ApprovalView.vue'
 
 export const routes = [
   {
@@ -18,6 +19,11 @@ export const routes = [
     name: 'tickets',
     component: TicketsView,
   },
+  {
+    path: '/approvals',
+    name: 'approvals',
+    component: ApprovalView,
+  },
 ]
 
 export const router = createRouter({
@@ -30,6 +36,8 @@ router.beforeEach((to, _from, next) => {
   if (to.path !== '/login' && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.path === '/login' && authStore.isAuthenticated) {
+    next('/tickets')
+  } else if (to.path === '/approvals' && authStore.user && authStore.user.role !== 'approver') {
     next('/tickets')
   } else {
     next()

@@ -24,7 +24,7 @@
 
 ## 2. 当前可验证状态
 
-截至 Phase 2 工具治理与 HITL 完成（**Phase 1 & Phase 2 已完成验收（Gate A / Gate B Passed），进入 Phase 3 完整评估与大盘**）：
+截至 Phase 3 评估体系、大盘与全栈容器化完成（**Phase 1、Phase 2 与 Phase 3 已全量通过验收（Gate A / Gate B / Gate C All Passed）**）：
 
 ### 已完成
 
@@ -34,33 +34,16 @@
 - 定义 Tool Governance、状态所有权、失败模式、Evaluation 与 CI 门禁。
 - 建立 Pydantic v2 领域契约、八个 Tool Schema、封闭 Registry 和按角色白名单。
 - 填写四份 Agent contract 与 Prompt，并提供契约校验脚本。
-- 从 FastAPI 代码导出 OpenAPI，再生成前端 TypeScript API 类型。
-- 建立 20 条人工确认标签的冒烟评估数据，覆盖五类 intent 和八个 Tool。
-- 锁定 Python 与前端依赖；PostgreSQL、Redis Compose 服务已通过健康启动检查。
-- 初始化 Git，并以独立功能分支保留可审查的提交历史。
-- Alembic 从空 PostgreSQL 建出业务表与 LangGraph checkpoint 表，应用启动时不隐式建表。
-- 实现 Argon2id + JWT 认证，强制校验 issuer、audience 与有效期。
-- `POST /api/tickets` 在单事务内写入工单与 outbox 后返回 HTTP 202；API 不运行 Agent 图。
-- ARQ 使用严格 JSON 载荷与确定性 `start:{ticket_id}` 作业 ID，并测试了重复投递与 Redis 故障路径。
-- 实现 OpenAI-compatible 模型适配层与确定性 Fake，区分可重试与不可重试失败。
-- 实现四个 Agent 角色、四个只读 Tool、四个业务写 Tool、唯一确定性 Skill `password_reset`、统一执行网关（`executor.py`）。
-- 确定性 Policy 纯函数风险判定，退款超额等高风险操作强制 interrupt 中断并持久化审批。
-- 审批流与操作快照强绑定（`operation_id + args_hash`），PostgreSQL 乐观锁（`status + version`）杜绝并发重复决定与重复 Resume。
-- 操作账本（`ToolOperationRecord`）唯一幂等键保证，进程崩溃与重试时缓存命中，下游副作用严格为 1。
-- 8 大失败模式（F-01 到 F-08）自动化确定性测试全覆盖，完成演练脚本 `scripts/recovery_drill.py`。
-- Worker 独占运行 LangGraph 图：基于 PostgreSQL checkpointer 实现确定性断点恢复，故障注入测试验证重启后分类与写操作零重复。
-- 实现工单查询与脱敏 Trace API（`GET /api/tickets`、`GET /api/tickets/{ticket_id}`、`GET /api/tickets/{ticket_id}/trace`）。
-- 交付 Vue 3 前端 Login、Tickets 以及 ApprovalView 审批台，支持审批人驳回与同意、OCC 冲突提示与状态刷新。
-- 交付 CI 工作流与自动化 `l3_case_smoke.py` 脚本（Case A 只读检索、Case B 低风险自愈、Case C 高风险审批流）。
-- 冻结真实 live 模型前后对比产物：`eval/artifacts/phase2-before.json` 与 `eval/artifacts/phase2-after.json`，High-risk bypass count 严格为 0。
-
-### 尚未完成（Phase 3 范围）
-
-- 完整 80 条 Golden Dataset、长期 baseline、Eval 看板与可发布的完整实测指标；
-- Trace 可视化看板（TraceViewer）与 Eval 指标看板（EvalDashboard）；
-- 全栈 Docker Compose 一键启动与生产备份恢复演练。
-
-因此当前可以展示为“已完整交付工具治理（Tool Governance）与人机协同审批（HITL）闭环、通过 Gate A 与 Gate B 门禁的作品集级生产化多 Agent 系统”。
+- 从 FastAPI 代码导出 OpenAPI，再生成前端 TypeScript API 类型，保障前后端零契约漂移。
+- 建立 **80 条人工审核标签的完整 Golden Dataset**，均衡覆盖 5 类 intent（每类 16 条）与 F-01~F-08 异常失败模式。
+- 实现**纯函数确定性评估计算引擎**（`eval/metrics.py`），支持 Intent Accuracy、Handoff Accuracy、Tool Jaccard、Policy Accuracy（100% 门禁）、High-risk Bypass Count（硬门禁 0 绕过）、Task Success Rate、P95 尾部延迟等 13 个指标，严格杜绝 LLM 充当主观裁判。
+- 固化官方基线 `eval/baseline.json` (`baseline-v1.0.0-frozen`)，升级 Eval 运行器与 Eval API（`GET /api/eval/runs` 与 `GET /api/eval/runs/{run_id}`）。
+- 交付前端 **TraceViewer 审计时间线页面**（`TraceViewerView.vue`），支持按工单追溯 Supervisor、Knowledge、Action、Policy、Approval、Dispatcher 全流转细节与脱敏参数。
+- 交付前端 **EvalDashboard 评测大盘**（`EvalDashboardView.vue`），以鲜明色彩与醒目标签**严格区分“设计门槛 (Design Threshold)”与“本次结果 (Actual Observed)”**。
+- 落地 **TraceExporter 协议与可选 Langfuse 外部适配器**，默认 100% 离线自包含与零外部网络请求，遥测异常静默隔离不中断工单主图，元数据脱敏严防密码泄漏。
+- 完成前端 Multi-Stage 容器化（`frontend/Dockerfile`、`frontend/nginx.conf`），补齐 Docker Compose 全栈拓扑依赖与健康检查链路。
+- 交付全栈自动化巡检脚本 `scripts/full_stack_smoke.py` 与容灾备份恢复演练脚本 `scripts/backup_restore_drill.ps1`。
+- 冻结最终评估工件 `eval/artifacts/l3-live-final.json`，通过最终验收报告 `docs/evidence/l3/final-acceptance.md`。
 
 ---
 
@@ -73,10 +56,10 @@
 | Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | **满足**：Registry、白名单、Schema、统一执行网关、操作账本幂等缓存与脱敏审计测试全量通过 |
 | Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | **满足**：Policy 风险判定、interrupt 挂起、审批单绑定、OCC 乐观锁、resume 恢复与重复 resume 幂等通过 |
 | RAG | 可回查引用、检索评估产物 | **满足**：Chroma 返回五字段可回查引用，持久化至 projection，并在详情 API 与前端卡片完整渲染 |
-| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核样本、live model baseline 与 candidate 对比 artifact 已冻结；完整 80+ 条评测集待 Phase 3 |
-| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：Vue 3 Login、Ticket、ApprovalView 已实现并经 Vitest 与构建验证；TraceViewer/EvalDashboard 待 Phase 3 |
-| 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证；API/Worker 容器与 Dockerfile 已配置 |
-| 量化指标 | 可下载 eval artifact + Git SHA | 部分满足：已产出 `phase1-before.json` 与 `phase1-after.json`，带完整 Git SHA 与元数据对比（仅供阶段回归，不作最终发布） |
+| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | **满足**：80 条人工审核样本、官方基线 `eval/baseline.json`、离线/在线评测运行器及终版工件 `l3-live-final.json` 已固化 |
+| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | **满足**：Vue 3 Login、Tickets、ApprovalView、TraceViewer 与 EvalDashboard 全部通过 Vitest 与生产构建 |
+| 部署 | Compose 构建、健康检查、备份恢复演练 | **满足**：Docker Compose 全栈拓扑配置就绪，包含 Nginx、前端容器、API、Worker、Postgres、Redis 及灾备演练脚本 |
+| 量化指标 | 可下载 eval artifact + Git SHA | **满足**：`eval/artifacts/l3-live-final.json` 关联完整 Git SHA 与 80 Case 实测指标，高风险绕过严格为 0 |
 
 当某行证据全部存在后，才能新增对应完成时 bullet。不能先写 bullet 再等待实现追上文案。
 

@@ -4,7 +4,7 @@
 >
 > 设计版本：v2.0
 > 目标形态：作品集级生产化系统
-> 当前状态：设计与契约落地，业务代码尚未实现
+> 当前状态：Phase 1、Phase 2 与 Phase 3 全量通过验收（Gate A / Gate B / Gate C All Passed）
 > 上级开发约束：[`AGENTS.md`](../AGENTS.md)
 
 ---

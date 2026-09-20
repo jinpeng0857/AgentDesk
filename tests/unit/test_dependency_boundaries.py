@@ -59,7 +59,7 @@ def test_compose_services_configuration() -> None:
     compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     services = compose["services"]
 
-    assert set(services) == {"postgres", "redis", "api", "worker"}
+    assert set(services) == {"postgres", "redis", "api", "worker", "frontend"}
     for infra_name in ("postgres", "redis"):
         infra = services[infra_name]
         assert infra["image"]

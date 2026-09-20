@@ -5,8 +5,8 @@
 AgentDesk 是一个作品集级生产化项目：使用模拟企业数据实现工单分类、知识检索、受治理工具执行、人工审批、断点恢复和可追溯评估。
 
 > 设计文档版本：v2.0
-> 软件版本：0.2.0 / beta
-> 当前状态：Phase 1 只读纵切与 Phase 2 工具治理/HITL/8大失败模式全量通过（Gate A & Gate B Passed）
+> 软件版本：0.3.0 / release-candidate
+> 当前状态：Phase 1 只读纵切、Phase 2 工具治理/HITL 与 Phase 3 评估体系/前端大盘/容器化全量通过（Gate A, Gate B & Gate C All Passed）
 
 项目介于一次性 Demo 与真实企业产品之间。核心链路必须真实可运行、可测试、可恢复、可审计和可部署，但不实现完整 RBAC、多租户、真实企业接口或高可用集群。
 
@@ -318,9 +318,9 @@ docker compose up --build
 ## 开发路线
 
 1. **Phase 0 — 契约闭合（完成）**：Agent/Tool/OpenAPI 契约、20 条人工审核 Golden Cases、依赖与基础设施 Compose。
-2. **Phase 1 — 基础纵切**：JWT、PostgreSQL、Redis/ARQ、模型适配、只读 Agent 路径、基础页面。
-3. **Phase 2 — 治理与 HITL**：写 Tool、Policy、幂等账本、审批、interrupt/resume、八类失败模式。
-4. **Phase 3 — 评估与展示**：完整数据集、Live Eval、CI、Trace/Eval 页面、部署与备份。
+2. **Phase 1 — 基础纵切（完成，Gate A Passed）**：JWT、PostgreSQL、Redis/ARQ、模型适配、只读 Agent 路径、基础页面。
+3. **Phase 2 — 治理与 HITL（完成，Gate B Passed）**：写 Tool、Policy、幂等账本、审批、interrupt/resume、八类失败模式。
+4. **Phase 3 — 评估与展示（完成，Gate C Passed）**：80 条完整数据集、确定性指标引擎、Live/Offline Eval、Trace/Eval 看板、全栈 Docker 编排与备份恢复演练。
 
 每阶段的详细验收见 [docs/architecture.md §19](docs/architecture.md)。
 

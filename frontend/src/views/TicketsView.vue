@@ -153,9 +153,17 @@ function goToApprovals(): void {
               <h2>Ticket Details</h2>
               <p class="ticket-uuid">ID: {{ ticketStore.currentTicket.ticket_id }}</p>
             </div>
-            <span :class="['status-badge', ticketStore.currentTicket.status]">
-              {{ ticketStore.currentTicket.status }}
-            </span>
+            <div class="header-actions">
+              <span :class="['status-badge', ticketStore.currentTicket.status]">
+                {{ ticketStore.currentTicket.status }}
+              </span>
+              <button
+                class="btn-trace"
+                @click="router.push({ name: 'traces', params: { ticketId: ticketStore.currentTicket.ticket_id } })"
+              >
+                Inspect Trace
+              </button>
+            </div>
           </div>
 
           <div class="meta-grid">
@@ -368,6 +376,27 @@ textarea:focus {
   border: 1px solid #718096;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-trace {
+  padding: 0.35rem 0.75rem;
+  background-color: #2b6cb0;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-trace:hover {
+  background-color: #2c5282;
 }
 
 .btn-secondary:hover {

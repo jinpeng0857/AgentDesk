@@ -1,11 +1,11 @@
-﻿import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ApprovalView from './ApprovalView.vue'
 import { useAuthStore } from '../stores/auth'
 import { useApprovalsStore } from '../stores/approvals'
 import type { ApprovalDetailResponse, ApprovalSummaryResponse } from '../api/types'
-import { ApiError } from '../api/client'
+import { ApiError, type ApiClientLike } from '../api/client'
 
 const pushMock = vi.fn()
 vi.mock('vue-router', () => ({
@@ -66,7 +66,7 @@ describe('ApprovalView', () => {
 
     ;(authStore as unknown as { apiClient: unknown }).apiClient = fakeClient
     const approvalsStore = useApprovalsStore()
-    approvalsStore.setApiClient(fakeClient as any)
+    approvalsStore.setApiClient(fakeClient as unknown as ApiClientLike)
 
     const wrapper = mount(ApprovalView)
     await flushPromises()
@@ -122,7 +122,7 @@ describe('ApprovalView', () => {
 
     ;(authStore as unknown as { apiClient: unknown }).apiClient = fakeClient
     const approvalsStore = useApprovalsStore()
-    approvalsStore.setApiClient(fakeClient as any)
+    approvalsStore.setApiClient(fakeClient as unknown as ApiClientLike)
 
     const wrapper = mount(ApprovalView)
     await flushPromises()
@@ -168,7 +168,7 @@ describe('ApprovalView', () => {
 
     ;(authStore as unknown as { apiClient: unknown }).apiClient = fakeClient
     const approvalsStore = useApprovalsStore()
-    approvalsStore.setApiClient(fakeClient as any)
+    approvalsStore.setApiClient(fakeClient as unknown as ApiClientLike)
 
     const wrapper = mount(ApprovalView)
     await flushPromises()
@@ -211,7 +211,7 @@ describe('ApprovalView', () => {
 
     ;(authStore as unknown as { apiClient: unknown }).apiClient = fakeClient
     const approvalsStore = useApprovalsStore()
-    approvalsStore.setApiClient(fakeClient as any)
+    approvalsStore.setApiClient(fakeClient as unknown as ApiClientLike)
 
     const wrapper = mount(ApprovalView)
     await flushPromises()
@@ -253,7 +253,7 @@ describe('ApprovalView', () => {
 
     ;(authStore as unknown as { apiClient: unknown }).apiClient = fakeClient
     const approvalsStore = useApprovalsStore()
-    approvalsStore.setApiClient(fakeClient as any)
+    approvalsStore.setApiClient(fakeClient as unknown as ApiClientLike)
 
     const wrapper = mount(ApprovalView)
     await flushPromises()

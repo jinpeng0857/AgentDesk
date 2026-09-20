@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import LoginView from '../views/LoginView.vue'
 import TicketsView from '../views/TicketsView.vue'
 import ApprovalView from '../views/ApprovalView.vue'
+import TraceViewerView from '../views/TraceViewerView.vue'
 
 export const routes = [
   {
@@ -23,6 +24,11 @@ export const routes = [
     path: '/approvals',
     name: 'approvals',
     component: ApprovalView,
+  },
+  {
+    path: '/traces/:ticketId?',
+    name: 'traces',
+    component: TraceViewerView,
   },
 ]
 

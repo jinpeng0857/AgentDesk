@@ -1542,3 +1542,246 @@ async def test_f08_concurrent_approval_decisions_and_duplicate_resumes_idempoten
         order_final = await session.get(OrderRecord, order_id)
         assert order_final is not None
         assert order_final.refundable_amount == initial_amount - refund_amount
+
+
+class SimulatedCrashError(RuntimeError):
+    """Simulated worker process crash."""
+
+
+@pytest.mark.asyncio
+async def test_f07_worker_crash_after_ledger_commit_recovers_without_duplicate_writes(
+    session_factory: async_sessionmaker[AsyncSession],
+    migrated_database: str,
+    seeded_users: None,
+) -> None:
+    """F-07: Worker crash after write tool commits to ledger and DB, then recovers.
+
+    Ensures:
+    1. Worker 1 crashes before completing the graph.
+    2. Operation ledger holds the committed completed operation.
+    3. Worker 2 resumes from PostgreSQL checkpoint.
+    4. Tool ledger hits cache without re-invoking the side-effect.
+    5. Final business records (refunds & balance deductions) executed strictly once.
+    """
+    ticket_id = uuid.uuid4()
+    trace_id = uuid.uuid4()
+    order_id = f"ORD-F07-{uuid.uuid4().hex[:6].upper()}"
+    initial_amount = Decimal("100.00")
+    refund_amount = Decimal("50.00")
+    psycopg_url = to_psycopg_url(migrated_database)
+
+    # 1. Seed Order and Queued Ticket
+    async with session_factory() as session:
+        session.add(
+            OrderRecord(
+                id=order_id,
+                user_id=REQUESTER_ID,
+                total_amount=initial_amount,
+                refundable_amount=initial_amount,
+                status="delivered",
+                version=1,
+            )
+        )
+        session.add(
+            TicketRecord(
+                id=ticket_id,
+                thread_id=str(ticket_id),
+                requester_id=REQUESTER_ID,
+                user_query=f"Please refund order {order_id} $50.00",
+                trace_id=trace_id,
+                status="queued",
+                step_count=0,
+            )
+        )
+        await session.commit()
+
+    prompts = load_all_prompts()
+    settings = AppSettings(
+        database_url=migrated_database,
+        jwt_secret="test-secret-at-least-32-bytes-long-for-testing",
+        openai_model="test-model",
+    )
+
+    # 2. Worker 1 Execution & Crash
+    pool_1 = AsyncConnectionPool(
+        conninfo=psycopg_url,
+        max_size=5,
+        kwargs={"autocommit": True, "prepare_threshold": 0},
+        open=False,
+    )
+    await pool_1.open()
+    checkpointer_1 = AsyncPostgresSaver(pool_1)
+    await checkpointer_1.setup()
+
+    audit_sink_1 = InMemoryAuditSink()
+    adapters_1 = ToolAdapters(
+        knowledge=RecordingKnowledgeStore(result=knowledge_result()),
+        user=RecordingUserRepository(result=user_result()),
+        order=None,  # Use real DB order repository
+        service=RecordingServiceRepository(result=service_result()),
+        credential=DisabledCredentialService(),
+        refund=None,  # Use real DB refund repository
+        ticket=DisabledTicketService(),
+        access_request=DisabledAccessRequestService(),
+    )
+    tool_executor_1 = WriteToolExecutor(
+        adapters=adapters_1,
+        audit=audit_sink_1,
+        ticket_id=ticket_id,
+        trace_id=trace_id,
+        actor=ActorContext(user_id=REQUESTER_ID, role="requester"),
+        registry=TOOL_REGISTRY,
+        model_pairs=TOOL_MODEL_PAIRS,
+        session_factory=session_factory,
+    )
+
+    model_1 = FakeModelClient(
+        [
+            RoutingDecision(
+                intent=Intent.ORDER,
+                next_agent="action",
+                confidence=0.98,
+                escalate=False,
+                reason_code=RoutingReason.NEEDS_ACTION,
+            ),
+            ActionProposal(
+                tool_name="process_refund",
+                arguments=ProcessRefundArgs(
+                    requester_id=REQUESTER_ID,
+                    order_id=order_id,
+                    amount=refund_amount,
+                    currency="USD",
+                    order_version=1,
+                ),
+                evidence_result_ids=[],
+            ),
+            # Crash right after tool execution when supervisor tries to finalize
+            SimulatedCrashError("FATAL: Worker host crash!"),
+        ]
+    )
+
+    ctx_1 = GraphContext(
+        model_client=model_1,
+        prompts=prompts,
+        settings=settings,
+        session_factory=session_factory,
+        tool_executor=tool_executor_1,
+    )
+    graph_1 = build_ticket_graph(ctx_1, checkpointer=checkpointer_1)
+    runner_1 = GraphTicketRunner(
+        session_factory=session_factory,
+        checkpointer=checkpointer_1,
+        graph=graph_1,
+    )
+
+    with pytest.raises(SimulatedCrashError):
+        await runner_1.run(str(ticket_id))
+
+    # Close Worker 1 resources completely
+    await pool_1.close()
+
+    # 3. Verify Intermediate State: Ledger committed, refund inserted, balance deducted
+    async with session_factory() as session:
+        ops = (
+            await session.scalars(
+                select(ToolOperationRecord).where(
+                    ToolOperationRecord.ticket_id == ticket_id
+                )
+            )
+        ).all()
+        assert len(ops) == 1
+        assert ops[0].state == "completed"
+
+        refunds_post_crash = (
+            await session.scalars(
+                select(RefundRecord).where(RefundRecord.ticket_id == ticket_id)
+            )
+        ).all()
+        assert len(refunds_post_crash) == 1
+
+        order_post_crash = await session.get(OrderRecord, order_id)
+        assert order_post_crash is not None
+        assert order_post_crash.refundable_amount == initial_amount - refund_amount
+
+    # 4. Worker 2: Start new pool, new checkpointer, recover from checkpoint
+    pool_2 = AsyncConnectionPool(
+        conninfo=psycopg_url,
+        max_size=5,
+        kwargs={"autocommit": True, "prepare_threshold": 0},
+        open=False,
+    )
+    await pool_2.open()
+    checkpointer_2 = AsyncPostgresSaver(pool_2)
+
+    audit_sink_2 = InMemoryAuditSink()
+    adapters_2 = ToolAdapters(
+        knowledge=RecordingKnowledgeStore(result=knowledge_result()),
+        user=RecordingUserRepository(result=user_result()),
+        order=None,
+        service=RecordingServiceRepository(result=service_result()),
+        credential=DisabledCredentialService(),
+        refund=None,
+        ticket=DisabledTicketService(),
+        access_request=DisabledAccessRequestService(),
+    )
+    tool_executor_2 = WriteToolExecutor(
+        adapters=adapters_2,
+        audit=audit_sink_2,
+        ticket_id=ticket_id,
+        trace_id=trace_id,
+        actor=ActorContext(user_id=REQUESTER_ID, role="requester"),
+        registry=TOOL_REGISTRY,
+        model_pairs=TOOL_MODEL_PAIRS,
+        session_factory=session_factory,
+    )
+
+    model_2 = FakeModelClient(
+        [
+            FinalResponse(
+                kind="final",
+                resolution_mode=ResolutionMode.AUTOMATED,
+                final_response=f"Refund of $50.00 for order {order_id} completed.",
+            )
+        ]
+    )
+
+    ctx_2 = GraphContext(
+        model_client=model_2,
+        prompts=prompts,
+        settings=settings,
+        session_factory=session_factory,
+        tool_executor=tool_executor_2,
+    )
+    graph_2 = build_ticket_graph(ctx_2, checkpointer=checkpointer_2)
+    runner_2 = GraphTicketRunner(
+        session_factory=session_factory,
+        checkpointer=checkpointer_2,
+        graph=graph_2,
+    )
+
+    final_status = await runner_2.run(str(ticket_id))
+    assert final_status == TicketStatus.RESOLVED
+
+    await pool_2.close()
+
+    # 5. Final Side-Effects & Projection Verification
+    async with session_factory() as session:
+        ticket_final = await session.get(TicketRecord, ticket_id)
+        assert ticket_final is not None
+        assert ticket_final.status == TicketStatus.RESOLVED.value
+
+        final_refunds = (
+            await session.scalars(
+                select(RefundRecord).where(RefundRecord.ticket_id == ticket_id)
+            )
+        ).all()
+        assert len(final_refunds) == 1, (
+            f"Expected strictly 1 refund record, found {len(final_refunds)}!"
+        )
+
+        final_order = await session.get(OrderRecord, order_id)
+        assert final_order is not None
+        assert final_order.refundable_amount == initial_amount - refund_amount, (
+            f"Balance was deducted multiple times! Current: {final_order.refundable_amount}"
+        )
+

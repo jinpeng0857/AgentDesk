@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -56,3 +56,50 @@ class EvalArtifactMetadata(StrictModel):
         Decimal,
         Field(ge=Decimal("0"), max_digits=12, decimal_places=6),
     ]
+
+
+class CaseExecutionResult(StrictModel):
+    case_id: Annotated[str, Field(pattern=r"^[A-Z]{3}-\d{3}$")]
+    predicted_intent: Intent | str | None = None
+    actual_handoffs: list[ExpectedHandoff] = Field(default_factory=list)
+    actual_tools: list[str] = Field(default_factory=list)
+    predicted_risk: RiskLevel | str | None = None
+    actual_require_human: bool | None = None
+    actual_outcome: TicketStatus | str | None = None
+    retrieved_document_ids: list[str] = Field(default_factory=list)
+    actual_business_steps: int = 1
+    latency_ms: float = 0.0
+    high_risk_bypass: bool = False
+    cost_usd: Decimal = Decimal("0")
+    error_code: str | None = None
+
+
+class MetricsSummary(StrictModel):
+    intent_accuracy: Decimal
+    handoff_accuracy: Decimal
+    tool_selection_jaccard: Decimal
+    policy_decision_accuracy: Decimal
+    high_risk_bypass_count: int
+    task_success_rate: Decimal
+    retrieval_precision: Decimal
+    retrieval_recall: Decimal
+    trajectory_efficiency: Decimal
+    redundant_tool_call_rate: Decimal
+    latency_p95_ms: float
+    human_escalation_rate: Decimal
+    total_cases: int
+    failed_cases: int
+
+
+class MetricCheck(StrictModel):
+    name: str
+    value: float | int
+    threshold: float | int
+    comparison: str
+    passed: bool
+
+
+class ThresholdGateResult(StrictModel):
+    passed: bool
+    checks: list[MetricCheck]
+    details: dict[str, Any] = Field(default_factory=dict)

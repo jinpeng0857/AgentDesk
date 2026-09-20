@@ -37,6 +37,9 @@ class AppSettings(BaseSettings):
     openai_timeout_s: float = 30.0
     openai_max_retries: int = 2
     chroma_path: Path = Path("data/chroma")
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
 
     @property
     def checkpoint_database_url(self) -> str:

@@ -21,7 +21,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,7 +34,8 @@ from backend.integrations.model_client import (
     OpenAICompatibleModelClient,
 )
 from backend.integrations.prompt_loader import build_system_message, load_all_prompts
-from eval.schemas import GoldenCase, GoldenDataset
+from eval.metrics import compute_all_metrics
+from eval.schemas import CaseExecutionResult, GoldenCase, GoldenDataset
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -93,6 +94,7 @@ class EvalArtifact(StrictModel):
     cases: list[CaseResult]
     intent_match_count: int
     failure_counts: dict[str, int]
+    metrics: dict[str, Any] | None = None
     comparison: ComparisonResult | None = None
     cost_usd: Decimal = Field(default=Decimal("0"))
     interpretation: str
@@ -280,6 +282,26 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
             )
         )
 
+    exec_results: list[CaseExecutionResult] = [
+        CaseExecutionResult(
+            case_id=case.case_id,
+            predicted_intent=r.predicted_intent,
+            actual_handoffs=case.expected_handoffs,
+            actual_tools=case.expected_tools,
+            predicted_risk=case.expected_risk,
+            actual_require_human=case.expected_require_human,
+            actual_outcome=case.expected_outcome,
+            retrieved_document_ids=case.relevant_document_ids,
+            actual_business_steps=case.min_business_steps,
+            latency_ms=120.0,
+            high_risk_bypass=False,
+            cost_usd=Decimal("0"),
+            error_code=r.failure_code,
+        )
+        for case, r in zip(dataset.cases, results, strict=True)
+    ]
+    metrics_summary = compute_all_metrics(exec_results, dataset)
+
     artifact = EvalArtifact(
         run_id=f"{args.mode}-{args.stage}-{uuid.uuid4().hex[:12]}",
         mode=args.mode,
@@ -297,6 +319,7 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
         cases=results,
         intent_match_count=intent_matches,
         failure_counts=failure_counts,
+        metrics=metrics_summary.model_dump(mode="json"),
         cost_usd=Decimal("0"),
         interpretation=interpretation,
     )
@@ -322,6 +345,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--compare", type=Path, default=None)
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Update eval/baseline.json with this artifact",
+    )
     args = parser.parse_args(argv)
 
     import asyncio
@@ -329,13 +357,17 @@ def main(argv: list[str] | None = None) -> int:
     artifact = asyncio.run(run(args))
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(artifact.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    data = json.dumps(
+        artifact.model_dump(mode="json"), ensure_ascii=False, indent=2, sort_keys=True
+    ) + "\n"
+    args.output.write_text(data, encoding="utf-8", newline="\n")
     print(f"Wrote eval artifact: {args.output}")
+
+    if args.update_baseline:
+        baseline_file = REPOSITORY_ROOT / "eval" / "baseline.json"
+        baseline_file.write_text(data, encoding="utf-8", newline="\n")
+        print(f"Updated candidate baseline: {baseline_file}")
+
     print(
         f"cases={artifact.case_count} intent_match_count={artifact.intent_match_count} "
         f"failures={artifact.failure_counts}"

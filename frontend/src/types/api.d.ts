@@ -810,15 +810,6 @@ export interface operations {
                     "application/json": components["schemas"]["EvalRunSummaryResponse"][];
                 };
             };
-            /** @description Contract only */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
     get_eval_run_api_eval_runs__run_id__get: {
@@ -848,15 +839,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Contract only */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

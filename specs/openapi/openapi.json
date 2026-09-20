@@ -1247,16 +1247,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Contract only"
           }
         },
         "summary": "List Eval Runs",
@@ -1299,16 +1289,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Contract only"
           }
         },
         "summary": "Get Eval Run",

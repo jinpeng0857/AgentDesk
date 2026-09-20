@@ -57,13 +57,13 @@ def test_error_envelope_and_contract_status_are_published() -> None:
 
     assert "ErrorEnvelope" in schema["components"]["schemas"]
     assert "501" not in schema["paths"]["/api/approvals"]["get"]["responses"]
-    assert "501" in schema["paths"]["/api/eval/runs"]["get"]["responses"]
+    assert "501" not in schema["paths"]["/api/eval/runs"]["get"]["responses"]
     assert "501" not in schema["paths"]["/api/tickets"]["post"]["responses"]
     assert "202" in schema["paths"]["/api/tickets"]["post"]["responses"]
     assert schema["x-agentdesk-status"] == "phase-1-partial"
 
 
-def test_auth_and_approvals_are_real_while_eval_remains_stub() -> None:
+def test_auth_approvals_and_eval_are_real() -> None:
     schema = _openapi()
 
     for path, method in (
@@ -72,14 +72,10 @@ def test_auth_and_approvals_are_real_while_eval_remains_stub() -> None:
         ("/api/approvals", "get"),
         ("/api/approvals/{approval_id}", "get"),
         ("/api/approvals/{approval_id}/decision", "post"),
-    ):
-        assert "501" not in schema["paths"][path][method]["responses"], path
-
-    for path, method in (
         ("/api/eval/runs", "get"),
         ("/api/eval/runs/{run_id}", "get"),
     ):
-        assert "501" in schema["paths"][path][method]["responses"], path
+        assert "501" not in schema["paths"][path][method]["responses"], path
 
 
 def test_ticket_requester_identity_cannot_be_supplied_by_client() -> None:
@@ -108,11 +104,11 @@ async def test_health_is_live_and_unimplemented_routes_are_explicit_stubs() -> N
 
     assert health.status_code == 200
     assert health.json() == {"status": "ok"}
-    assert eval_run.status_code == 501
-    assert eval_run.json()["error"]["code"] == "NOT_IMPLEMENTED"
-    # Approval and ticket routes are real now. This app instance has no lifespan, so the
+    # Eval, approval and ticket routes are real now. This app instance has no lifespan, so the
     # session factory is absent and requests fail as not-ready rather than
-    # reaching the authentication check.
+    # reaching the database check.
+    assert eval_run.status_code == 503
+    assert eval_run.json()["error"]["code"] == "NOT_READY"
     assert approval.status_code == 503
     assert approval.json()["error"]["code"] == "NOT_READY"
     assert ticket.status_code == 503

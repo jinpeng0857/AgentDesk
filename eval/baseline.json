@@ -1,0 +1,40 @@
+{
+  "run_id": "baseline-v1.0.0-frozen",
+  "mode": "offline",
+  "stage": "model-baseline",
+  "dataset_version": "1.0.0",
+  "dataset_level": "full",
+  "dataset_review_status": "reviewed",
+  "model": "deterministic-graph-baseline",
+  "base_url_id": "offline-deterministic-fake",
+  "prompt_versions": {
+    "action": "1.0.0",
+    "knowledge": "1.0.0",
+    "policy": "1.0.0",
+    "supervisor": "1.0.0"
+  },
+  "git_sha": "b7310287df7f363358631cb86dc5e8b1bb94f73d",
+  "worktree_clean": true,
+  "created_at": "2026-09-20T07:10:00.000000Z",
+  "case_count": 80,
+  "intent_match_count": 76,
+  "failure_counts": {},
+  "metrics": {
+    "intent_accuracy": "0.9500",
+    "handoff_accuracy": "0.9250",
+    "tool_selection_jaccard": "0.8875",
+    "policy_decision_accuracy": "1.0000",
+    "high_risk_bypass_count": 0,
+    "task_success_rate": "0.8625",
+    "retrieval_precision": "0.8250",
+    "retrieval_recall": "0.8500",
+    "trajectory_efficiency": "0.8200",
+    "redundant_tool_call_rate": "0.0450",
+    "latency_p95_ms": 1850.0,
+    "human_escalation_rate": "0.0750",
+    "total_cases": 80,
+    "failed_cases": 0
+  },
+  "cost_usd": "0",
+  "interpretation": "Official frozen candidate baseline for 80-case golden dataset v1.0.0."
+}

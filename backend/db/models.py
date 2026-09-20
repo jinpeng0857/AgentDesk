@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     UUID,
@@ -357,6 +358,21 @@ class DownstreamTicketRecord(Base):
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(2_000))
     status: Mapped[str] = mapped_column(String(32), default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
+class EvalRunRecord(Base):
+    __tablename__ = "eval_runs"
+
+    run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    dataset_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    git_sha: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    prompt_versions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    metrics: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
     )

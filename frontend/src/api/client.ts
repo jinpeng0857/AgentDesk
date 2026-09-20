@@ -18,6 +18,8 @@ import type {
   TicketSummaryResponse,
   TokenResponse,
   TraceEventResponse,
+  EvalRunSummaryResponse,
+  EvalRunDetailResponse,
 } from './types'
 
 export class ApiError extends Error {
@@ -45,6 +47,8 @@ export interface ApiClientLike {
     approvalId: string,
     decision: ApprovalDecisionRequest,
   ): Promise<ApprovalDecisionResponse>
+  listEvalRuns(): Promise<EvalRunSummaryResponse[]>
+  getEvalRun(runId: string): Promise<EvalRunDetailResponse>
 }
 
 export class ApiClient implements ApiClientLike {
@@ -155,6 +159,18 @@ export class ApiClient implements ApiClientLike {
     return this.request<ApprovalDecisionResponse>(`/api/approvals/${approvalId}/decision`, {
       method: 'POST',
       body: JSON.stringify(decision),
+    })
+  }
+
+  async listEvalRuns(): Promise<EvalRunSummaryResponse[]> {
+    return this.request<EvalRunSummaryResponse[]>('/api/eval/runs', {
+      method: 'GET',
+    })
+  }
+
+  async getEvalRun(runId: string): Promise<EvalRunDetailResponse> {
+    return this.request<EvalRunDetailResponse>(`/api/eval/runs/${runId}`, {
+      method: 'GET',
     })
   }
 }

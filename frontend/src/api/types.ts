@@ -25,3 +25,7 @@ export type ApprovalDetailResponse = components['schemas']['ApprovalDetailRespon
 export type ApprovalStatus = components['schemas']['ApprovalStatus']
 export type ApprovalSummaryResponse = components['schemas']['ApprovalSummaryResponse']
 export type RedactedArgument = components['schemas']['RedactedArgument']
+export type EvalMetricResponse = components['schemas']['EvalMetricResponse']
+export type EvalRunSummaryResponse = components['schemas']['EvalRunSummaryResponse']
+export type EvalRunDetailResponse = components['schemas']['EvalRunDetailResponse']
+

@@ -4,6 +4,7 @@ import LoginView from '../views/LoginView.vue'
 import TicketsView from '../views/TicketsView.vue'
 import ApprovalView from '../views/ApprovalView.vue'
 import TraceViewerView from '../views/TraceViewerView.vue'
+import EvalDashboardView from '../views/EvalDashboardView.vue'
 
 export const routes = [
   {
@@ -29,6 +30,11 @@ export const routes = [
     path: '/traces/:ticketId?',
     name: 'traces',
     component: TraceViewerView,
+  },
+  {
+    path: '/eval',
+    name: 'eval',
+    component: EvalDashboardView,
   },
 ]
 

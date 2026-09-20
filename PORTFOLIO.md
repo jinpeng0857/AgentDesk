@@ -24,7 +24,7 @@
 
 ## 2. 当前可验证状态
 
-截至 Phase 1 只读纵切完成（**Phase 1 已完成验收，Phase 2 待开始**）：
+截至 Phase 2 工具治理与 HITL 完成（**Phase 1 & Phase 2 已完成验收（Gate A / Gate B Passed），进入 Phase 3 完整评估与大盘**）：
 
 ### 已完成
 
@@ -43,22 +43,24 @@
 - `POST /api/tickets` 在单事务内写入工单与 outbox 后返回 HTTP 202；API 不运行 Agent 图。
 - ARQ 使用严格 JSON 载荷与确定性 `start:{ticket_id}` 作业 ID，并测试了重复投递与 Redis 故障路径。
 - 实现 OpenAI-compatible 模型适配层与确定性 Fake，区分可重试与不可重试失败。
-- 实现四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索。
-- 只读执行网关对四个写工具确定性拒绝且零副作用，每次尝试都写入脱敏审计。
-- Worker 独占运行 LangGraph 图：基于 PostgreSQL checkpointer 实现确定性断点恢复，故障注入测试验证重启后 Supervisor 分类不重复且零写副作用。
-- 实现工单查询与脱敏 Trace API（`GET /api/tickets`、`GET /api/tickets/{ticket_id}`、`GET /api/tickets/{ticket_id}/trace`），严格保障请求人数据隔离与越权防探测（404）。
-- 交付 Vue 3 最小前端：纯内存认证、提交表单立即清空密码输入、2 秒自动轮询、后台页面休眠暂停、终态停止以及 5 字段知识库卡片展示。
-- 交付三个 CI 工作流（Backend CI、Frontend CI、Evaluation）与自动化 `phase1_smoke.py` 脚本。
-- 冻结真实 live 模型前后对比产物：`eval/artifacts/phase1-before.json` 与 `eval/artifacts/phase1-after.json`，在干净工作区基于同一模型（`deepseek-chat`）产出并严格比对元数据。
+- 实现四个 Agent 角色、四个只读 Tool、四个业务写 Tool、唯一确定性 Skill `password_reset`、统一执行网关（`executor.py`）。
+- 确定性 Policy 纯函数风险判定，退款超额等高风险操作强制 interrupt 中断并持久化审批。
+- 审批流与操作快照强绑定（`operation_id + args_hash`），PostgreSQL 乐观锁（`status + version`）杜绝并发重复决定与重复 Resume。
+- 操作账本（`ToolOperationRecord`）唯一幂等键保证，进程崩溃与重试时缓存命中，下游副作用严格为 1。
+- 8 大失败模式（F-01 到 F-08）自动化确定性测试全覆盖，完成演练脚本 `scripts/recovery_drill.py`。
+- Worker 独占运行 LangGraph 图：基于 PostgreSQL checkpointer 实现确定性断点恢复，故障注入测试验证重启后分类与写操作零重复。
+- 实现工单查询与脱敏 Trace API（`GET /api/tickets`、`GET /api/tickets/{ticket_id}`、`GET /api/tickets/{ticket_id}/trace`）。
+- 交付 Vue 3 前端 Login、Tickets 以及 ApprovalView 审批台，支持审批人驳回与同意、OCC 冲突提示与状态刷新。
+- 交付 CI 工作流与自动化 `l3_case_smoke.py` 脚本（Case A 只读检索、Case B 低风险自愈、Case C 高风险审批流）。
+- 冻结真实 live 模型前后对比产物：`eval/artifacts/phase2-before.json` 与 `eval/artifacts/phase2-after.json`，High-risk bypass count 严格为 0。
 
-### 尚未完成（Phase 2/3 范围）
+### 尚未完成（Phase 3 范围）
 
-- 四个业务写 Tool 的真实实现，以及幂等账本、Policy 风险矩阵、审批与 interrupt/resume；
 - 完整 80 条 Golden Dataset、长期 baseline、Eval 看板与可发布的完整实测指标；
-- 审批台（ApprovalView）与 Trace 可视化看板（TraceViewer）；
-- 跨主机部署与多节点高可用。
+- Trace 可视化看板（TraceViewer）与 Eval 指标看板（EvalDashboard）；
+- 全栈 Docker Compose 一键启动与生产备份恢复演练。
 
-因此当前可以展示为“已完成契约基线与可运行的只读纵切（包含独立 Worker、PostgreSQL checkpoint 恢复、只读工具治理、最小前端与 live 模型对比产物），正在开发写操作治理与 HITL 的作品集级生产化项目”。
+因此当前可以展示为“已完整交付工具治理（Tool Governance）与人机协同审批（HITL）闭环、通过 Gate A 与 Gate B 门禁的作品集级生产化多 Agent 系统”。
 
 ---
 
@@ -66,13 +68,13 @@
 
 | 候选能力 | 写入简历前必须具备的证据 | 当前状态 |
 |---|---|---|
-| 多 Agent 编排 | 可运行图、路由测试、真实 Trace | 部分满足：四个 Agent 角色、Dispatcher 确定性边界、只读 LangGraph 图与恢复测试已通过；写操作与 HITL 属 Phase 2 |
-| 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | 满足：HTTP 202、JSON ARQ 载荷、确定性 job ID、outbox 投递与 Worker 崩溃恢复断点续跑测试已通过 |
-| Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | 部分满足：Registry、白名单、Schema、只读执行网关与脱敏审计测试已有；幂等账本与写路径属 Phase 2 |
-| Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | 未满足：属 Phase 2 交付范围 |
-| RAG | 可回查引用、检索评估产物 | 满足：Chroma 返回五字段可回查引用，持久化至 projection，并在详情 API 与前端卡片完整渲染 |
-| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核样本、live model baseline 与 candidate 对比 artifact 已冻结（`phase1-before.json` vs `phase1-after.json`）；完整 80+ 条评测集待 Phase 3 |
-| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：Vue 3 最小切片、内存 JWT、2 秒轮询、终态停止、5 字段引用展示已实现并经 Vitest 与构建验证；审批页待 Phase 2 |
+| 多 Agent 编排 | 可运行图、路由测试、真实 Trace | **满足**：四个 Agent 角色、Dispatcher 确定性边界、LangGraph 读写图与断点恢复测试全量通过 |
+| 独立 Worker | HTTP 202、队列记录、Worker 重启恢复测试 | **满足**：HTTP 202、JSON ARQ 载荷、确定性 job ID、outbox 投递与 Worker 崩溃恢复断点续跑测试已通过 |
+| Tool Governance | Registry、白名单、Policy、幂等账本、审计测试 | **满足**：Registry、白名单、Schema、统一执行网关、操作账本幂等缓存与脱敏审计测试全量通过 |
+| Human-in-the-loop | interrupt、审批记录、resume、重复恢复测试 | **满足**：Policy 风险判定、interrupt 挂起、审批单绑定、OCC 乐观锁、resume 恢复与重复 resume 幂等通过 |
+| RAG | 可回查引用、检索评估产物 | **满足**：Chroma 返回五字段可回查引用，持久化至 projection，并在详情 API 与前端卡片完整渲染 |
+| Evaluation | 人工审核数据集、baseline、带元数据的 Live Eval | 部分满足：20 条人工审核样本、live model baseline 与 candidate 对比 artifact 已冻结；完整 80+ 条评测集待 Phase 3 |
+| 前端 | 可访问页面、OpenAPI 生成类型、构建记录 | 部分满足：Vue 3 Login、Ticket、ApprovalView 已实现并经 Vitest 与构建验证；TraceViewer/EvalDashboard 待 Phase 3 |
 | 部署 | Compose 构建、健康检查、备份恢复演练 | 部分满足：PostgreSQL/Redis 健康检查已验证；API/Worker 容器与 Dockerfile 已配置 |
 | 量化指标 | 可下载 eval artifact + Git SHA | 部分满足：已产出 `phase1-before.json` 与 `phase1-after.json`，带完整 Git SHA 与元数据对比（仅供阶段回归，不作最终发布） |
 

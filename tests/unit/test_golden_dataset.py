@@ -16,25 +16,25 @@ def _dataset():
     return loader()
 
 
-def test_smoke_dataset_has_twenty_unique_reviewed_cases() -> None:
+def test_golden_dataset_has_eighty_unique_reviewed_cases() -> None:
     dataset = _dataset()
 
-    assert dataset.version == "0.2.0"
-    assert dataset.level == "smoke"
+    assert dataset.version == "1.0.0"
+    assert dataset.level == "full"
     assert dataset.review_status == "reviewed"
-    assert len(dataset.cases) == 20
-    assert len({case.case_id for case in dataset.cases}) == 20
+    assert len(dataset.cases) == 80
+    assert len({case.case_id for case in dataset.cases}) == 80
 
 
-def test_each_intent_has_four_cases() -> None:
+def test_each_intent_has_sixteen_cases() -> None:
     distribution = Counter(case.expected_intent.value for case in _dataset().cases)
 
     assert distribution == {
-        "network": 4,
-        "account": 4,
-        "permission": 4,
-        "query": 4,
-        "high_risk": 4,
+        "network": 16,
+        "account": 16,
+        "permission": 16,
+        "query": 16,
+        "high_risk": 16,
     }
 
 

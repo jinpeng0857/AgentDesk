@@ -13,11 +13,11 @@ from tools.registry import TOOL_REGISTRY
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_PATH = REPOSITORY_ROOT / "eval" / "golden_dataset.json"
 EXPECTED_INTENT_DISTRIBUTION = {
-    "network": 4,
-    "account": 4,
-    "permission": 4,
-    "query": 4,
-    "high_risk": 4,
+    "network": 16,
+    "account": 16,
+    "permission": 16,
+    "query": 16,
+    "high_risk": 16,
 }
 
 
@@ -31,14 +31,14 @@ def validate_golden_dataset(
     require_reviewed: bool,
 ) -> list[str]:
     issues: list[str] = []
-    if dataset.version != "0.2.0":
-        issues.append("dataset version must be 0.2.0")
-    if dataset.level != "smoke":
-        issues.append("20-case dataset level must be smoke")
+    if dataset.version != "1.0.0":
+        issues.append("dataset version must be 1.0.0")
+    if dataset.level != "full":
+        issues.append("dataset level must be full")
     if require_reviewed and dataset.review_status != "reviewed":
         issues.append("dataset requires human review")
-    if len(dataset.cases) != 20:
-        issues.append("smoke dataset must contain exactly 20 cases")
+    if len(dataset.cases) < 80:
+        issues.append("full evaluation dataset must contain at least 80 cases")
 
     case_ids = [case.case_id for case in dataset.cases]
     if len(set(case_ids)) != len(case_ids):
@@ -46,7 +46,7 @@ def validate_golden_dataset(
 
     intent_distribution = Counter(case.expected_intent.value for case in dataset.cases)
     if dict(intent_distribution) != EXPECTED_INTENT_DISTRIBUTION:
-        issues.append("each intent must have exactly four cases")
+        issues.append("each intent must have exactly 16 cases")
 
     write_tools = {
         name for name, spec in TOOL_REGISTRY.items() if spec.side_effects == "write"

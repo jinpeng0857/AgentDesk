@@ -109,11 +109,11 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 人工在本机环境注入 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`，密钥不写入文件和 Git。
-- [ ] 运行 `git status --short`，必须无输出。
-- [ ] 运行 `uv run python eval/run_eval.py --mode live --stage model-baseline --output eval/artifacts/phase1-before.json`。
-- [ ] 检查 artifact 含 dataset version、model、base URL 标识、四个 Prompt version、UTC、Git SHA、case result 和失败码。
-- [ ] 提交 artifact 与验收记录：`eval(eval): record phase one model baseline`。
+- [x] 人工在本机环境注入 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`，密钥不写入文件和 Git。
+- [x] 运行 `git status --short`，必须无输出。
+- [x] 运行 `uv run python eval/run_eval.py --mode live --stage model-baseline --output eval/artifacts/phase1-before.json`。
+- [x] 检查 artifact 含 dataset version、model、base URL 标识、四个 Prompt version、UTC、Git SHA、case result 和失败码。
+- [x] 提交 artifact 与验收记录：`eval(eval): record phase one model baseline`。
 
 **验收目标**
 
@@ -134,11 +134,11 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 先为所有合法/非法转移、终态不可变、低置信度升级和第 15 步停止写失败测试。
-- [ ] 为各节点允许返回的键集合写状态所有权测试。
-- [ ] 实现 `initial_ticket_state(record)`、`advance_dispatch(state, *, actor, action)` 和纯路由函数。
-- [ ] 确认 `edges.py` 不 import ModelClient 或 Tool callable。
-- [ ] 运行 `uv run pytest tests/unit/test_routing.py tests/unit/test_state_ownership.py -q`，再运行 Ruff 与 mypy。
+- [x] 先为所有合法/非法转移、终态不可变、低置信度升级和第 15 步停止写失败测试。
+- [x] 为各节点允许返回的键集合写状态所有权测试。
+- [x] 实现 `initial_ticket_state(record)`、`advance_dispatch(state, *, actor, action)` 和纯路由函数。
+- [x] 确认 `edges.py` 不 import ModelClient 或 Tool callable。
+- [x] 运行 `uv run pytest tests/unit/test_routing.py tests/unit/test_state_ownership.py -q`，再运行 Ruff 与 mypy。
 
 **验收目标**
 
@@ -157,11 +157,11 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 用固定 FakeModelClient 序列写 `Supervisor → Knowledge → Supervisor finalizer` 失败测试。
-- [ ] 用依赖注入闭包实现 Supervisor、Knowledge、Action、Policy 节点。
-- [ ] 构建图并使用 `thread_id=ticket_id`；Knowledge 只追加验证过的引用。
-- [ ] 断言最终 `resolved`、引用五字段完整、写 Adapter 调用数为零、步数有界。
-- [ ] 运行图集成测试和领域依赖边界测试。
+- [x] 用固定 FakeModelClient 序列写 `Supervisor → Knowledge → Supervisor finalizer` 失败测试。
+- [x] 用依赖注入闭包实现 Supervisor、Knowledge、Action、Policy 节点。
+- [x] 构建图并使用 `thread_id=ticket_id`；Knowledge 只追加验证过的引用。
+- [x] 断言最终 `resolved`、引用五字段完整、写 Adapter 调用数为零、步数有界。
+- [x] 运行图集成测试和领域依赖边界测试。
 
 **验收目标**
 
@@ -183,11 +183,11 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写固定故障点：Supervisor checkpoint 后第一次 Knowledge 调用失败。
-- [ ] 实现 `TicketRunner.run(ticket_id)`，已有 checkpoint 时以 `None` 恢复，终态直接返回。
-- [ ] 用长生命周期 psycopg pool 创建 `AsyncPostgresSaver`；不在运行时建表。
-- [ ] 将 `api` 与 `worker` 加入 Compose，同镜像不同命令，均依赖 PostgreSQL/Redis 健康检查。
-- [ ] 重建 Worker 后以同一 ticket_id 恢复，断言 Supervisor 不重复分类且零写副作用。
+- [x] 写固定故障点：Supervisor checkpoint 后第一次 Knowledge 调用失败。
+- [x] 实现 `TicketRunner.run(ticket_id)`，已有 checkpoint 时以 `None` 恢复，终态直接返回。
+- [x] 用长生命周期 psycopg pool 创建 `AsyncPostgresSaver`；不在运行时建表。
+- [x] 将 `api` 与 `worker` 加入 Compose，同镜像不同命令，均依赖 PostgreSQL/Redis 健康检查。
+- [x] 重建 Worker 后以同一 ticket_id 恢复，断言 Supervisor 不重复分类且零写副作用。
 
 **验收目标**
 
@@ -212,10 +212,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 先写请求者隔离、401/404、列表顺序、引用字段和敏感值不泄漏测试。
-- [ ] 实现 list/detail/trace，只从 projection、trace event 和 audit record 组合响应，不直接暴露 checkpoint blob。
-- [ ] 重新生成 OpenAPI 与 TypeScript 类型并执行漂移检查。
-- [ ] 运行 API 集成测试、OpenAPI 测试和依赖边界测试。
+- [x] 先写请求者隔离、401/404、列表顺序、引用字段和敏感值不泄漏测试。
+- [x] 实现 list/detail/trace，只从 projection、trace event 和 audit record 组合响应，不直接暴露 checkpoint blob。
+- [x] 重新生成 OpenAPI 与 TypeScript 类型并执行漂移检查。
+- [x] 运行 API 集成测试、OpenAPI 测试和依赖边界测试。
 
 **验收目标**
 
@@ -238,10 +238,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写测试证明 JWT 只在 Pinia 内存，密码提交后立即清空，`localStorage` 始终为空。
-- [ ] 实现生成类型驱动的 ApiClient 和统一 `error.code` 映射。
-- [ ] 实现工单创建、列表、2 秒轮询、网络退避、页面隐藏暂停和终态停止。
-- [ ] 运行 `npm run lint`、`npm run type-check`、`npm run test`、`npm run build`。
+- [x] 写测试证明 JWT 只在 Pinia 内存，密码提交后立即清空，`localStorage` 始终为空。
+- [x] 实现生成类型驱动的 ApiClient 和统一 `error.code` 映射。
+- [x] 实现工单创建、列表、2 秒轮询、网络退避、页面隐藏暂停和终态停止。
+- [x] 运行 `npm run lint`、`npm run type-check`、`npm run test`、`npm run build`。
 
 **验收目标**
 
@@ -262,12 +262,12 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 运行 `docker compose up -d --build postgres redis api worker`，迁移空库并播种演示数据。
-- [ ] Smoke 脚本登录、提交 VPN 工单、确认 202、轮询到 resolved、校验五字段引用和零业务写审计。
-- [ ] 重启 Worker，证明既有工单仍可查询且 checkpoint 恢复测试通过。
-- [ ] 启用三条固定 CI；普通 CI 只跑 offline，live job 仅受保护手动触发。
-- [ ] 用 Day 01 相同模型和端点运行 live candidate，与 `phase1-before.json` 比较。
-- [ ] 通过完整 Phase 1 门禁后，才同步三份主文档状态。
+- [x] 运行 `docker compose up -d --build postgres redis api worker`，迁移空库并播种演示数据。
+- [x] Smoke 脚本登录、提交 VPN 工单、确认 202、轮询到 resolved、校验五字段引用和零业务写审计。
+- [x] 重启 Worker，证明既有工单仍可查询且 checkpoint 恢复测试通过。
+- [x] 启用三条固定 CI；普通 CI 只跑 offline，live job 仅受保护手动触发。
+- [x] 用 Day 01 相同模型和端点运行 live candidate，与 `phase1-before.json` 比较。
+- [x] 通过完整 Phase 1 门禁后，才同步三份主文档状态。
 
 **验收目标**
 
@@ -290,11 +290,11 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 在修改任何 Phase 2 行为、Prompt 或 Agent 前，从 Day 07 的 clean commit 运行 live baseline 并提交 `phase2-before.json`。
-- [ ] 先写操作账本唯一键、`operation_id`/`args_hash` 稳定性、Approval 绑定与 version 乐观锁测试。
-- [ ] 增加 Pending Operation、operation ledger、Approval Record 和必要业务写结果表。
-- [ ] 使用 `Decimal`、UTC aware datetime 和数据库唯一约束；敏感结果只允许加密列。
-- [ ] 从全新数据库运行 `alembic upgrade head` 并执行迁移结构测试。
+- [x] 在修改任何 Phase 2 行为、Prompt 或 Agent 前，从 Day 07 的 clean commit 运行 live baseline 并提交 `phase2-before.json`。
+- [x] 先写操作账本唯一键、`operation_id`/`args_hash` 稳定性、Approval 绑定与 version 乐观锁测试。
+- [x] 增加 Pending Operation、operation ledger、Approval Record 和必要业务写结果表。
+- [x] 使用 `Decimal`、UTC aware datetime 和数据库唯一约束；敏感结果只允许加密列。
+- [x] 从全新数据库运行 `alembic upgrade head` 并执行迁移结构测试。
 
 **验收目标**
 
@@ -316,10 +316,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写 read、create_ticket、request_access、reset_password、refund 199.99/200.00、跨用户、inactive account 和未知 Tool 的风险矩阵测试。
-- [ ] 实现纯函数 `assess_risk` 与授权规则；LLM 只能在判定后生成解释。
-- [ ] Action 在 Policy 前只创建 `PendingOperation`，不执行任何写调用。
-- [ ] 校验 Prompt 使用 `must not`、`never`、`only` 等绝对约束语言。
+- [x] 写 read、create_ticket、request_access、reset_password、refund 199.99/200.00、跨用户、inactive account 和未知 Tool 的风险矩阵测试。
+- [x] 实现纯函数 `assess_risk` 与授权规则；LLM 只能在判定后生成解释。
+- [x] Action 在 Policy 前只创建 `PendingOperation`，不执行任何写调用。
+- [x] 校验 Prompt 使用 `must not`、`never`、`only` 等绝对约束语言。
 
 **验收目标**
 
@@ -340,10 +340,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 用 Recording Adapter 写白名单早于实现解析、无批准高风险拒绝、缓存命中、超时、重试耗尽测试。
-- [ ] 按固定顺序实现 Schema → whitelist → Policy/Approval → ledger/lock → timeout/retry → execute → validate → redact → audit。
-- [ ] 所有成功、失败、拒绝、超时和缓存命中写入完整 H-18 字段。
-- [ ] 并发执行同一幂等键，断言一次副作用，其他调用读取历史结果。
+- [x] 用 Recording Adapter 写白名单早于实现解析、无批准高风险拒绝、缓存命中、超时、重试耗尽测试。
+- [x] 按固定顺序实现 Schema → whitelist → Policy/Approval → ledger/lock → timeout/retry → execute → validate → redact → audit。
+- [x] 所有成功、失败、拒绝、超时和缓存命中写入完整 H-18 字段。
+- [x] 并发执行同一幂等键，断言一次副作用，其他调用读取历史结果。
 
 **验收目标**
 
@@ -366,10 +366,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写本人请求、跨用户拒绝、重复 operation 和输出 Schema 测试。
-- [ ] 实现模拟下游工单创建与权限申请；`request_access` 只创建申请，绝不直接授权。
-- [ ] 所有调用经统一网关；Adapter 不自行做 Policy 或审计旁路。
-- [ ] 对同一幂等键重复调用并核对数据库行数保持 1。
+- [x] 写本人请求、跨用户拒绝、重复 operation 和输出 Schema 测试。
+- [x] 实现模拟下游工单创建与权限申请；`request_access` 只创建申请，绝不直接授权。
+- [x] 所有调用经统一网关；Adapter 不自行做 Policy 或审计旁路。
+- [x] 对同一幂等键重复调用并核对数据库行数保持 1。
 
 **验收目标**
 
@@ -391,10 +391,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写固定步骤、固定 `on_failure`、本人 active、他人账号、inactive account 和重复执行测试。
-- [ ] 模型只选择 Skill；步骤顺序由 Python 定义且不可被模型改写。
-- [ ] 临时口令只向授权请求者展示一次；ledger 重试所需值使用应用级加密。
-- [ ] 扫描日志、审计、Trace、异常和数据库非加密列，确认无临时口令明文。
+- [x] 写固定步骤、固定 `on_failure`、本人 active、他人账号、inactive account 和重复执行测试。
+- [x] 模型只选择 Skill；步骤顺序由 Python 定义且不可被模型改写。
+- [x] 临时口令只向授权请求者展示一次；ledger 重试所需值使用应用级加密。
+- [x] 扫描日志、审计、Trace、异常和数据库非加密列，确认无临时口令明文。
 
 **验收目标**
 
@@ -414,10 +414,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写订单所有权、可退款状态、版本、币种、金额上限、199.99 与 200.00 边界测试。
-- [ ] 全链路使用 `Decimal`，禁止 float。
-- [ ] medium 退款可以自动执行；high 退款在无批准时由网关拒绝。
-- [ ] 重复 operation 和并发调用均断言退款业务记录只有一条。
+- [x] 写订单所有权、可退款状态、版本、币种、金额上限、199.99 与 200.00 边界测试。
+- [x] 全链路使用 `Decimal`，禁止 float。
+- [x] medium 退款可以自动执行；high 退款在无批准时由网关拒绝。
+- [x] 重复 operation 和并发调用均断言退款业务记录只有一条。
 
 **验收目标**
 
@@ -437,10 +437,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写 approver 权限、列表/详情、approve/reject、版本冲突、重复决定、TTL 过期和禁止编辑参数测试。
-- [ ] 实现 `status + version` 条件更新；第一次成功决定后才创建 resume outbox。
-- [ ] 在 resume 入队前重新计算并核对 `operation_id + args_hash`。
-- [ ] 重新生成 OpenAPI 和前端类型。
+- [x] 写 approver 权限、列表/详情、approve/reject、版本冲突、重复决定、TTL 过期和禁止编辑参数测试。
+- [x] 实现 `status + version` 条件更新；第一次成功决定后才创建 resume outbox。
+- [x] 在 resume 入队前重新计算并核对 `operation_id + args_hash`。
+- [x] 重新生成 OpenAPI 和前端类型。
 
 **验收目标**
 
@@ -460,10 +460,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写 high-risk 到 `waiting_approval`、approve resume、reject terminal、args_hash mismatch 和重复 resume 测试。
-- [ ] 实现 Approval 节点写 `approval` 快照，高风险路径 interrupt，恢复后再进入 Action execute。
-- [ ] resume job ID 包含 approval_id 与 version；Job 载荷仍只含 ID。
-- [ ] 在 resume 路径让执行网关再次校验批准与冻结参数。
+- [x] 写 high-risk 到 `waiting_approval`、approve resume、reject terminal、args_hash mismatch 和重复 resume 测试。
+- [x] 实现 Approval 节点写 `approval` 快照，高风险路径 interrupt，恢复后再进入 Action execute。
+- [x] resume job ID 包含 approval_id 与 version；Job 载荷仍只含 ID。
+- [x] 在 resume 路径让执行网关再次校验批准与冻结参数。
 
 **验收目标**
 
@@ -483,10 +483,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写待审批列表、详情、approve/reject、409 version conflict 和过期状态页面测试。
-- [ ] 页面显示冻结 Tool、脱敏参数、风险原因、版本和过期时间，不显示敏感值。
-- [ ] Smoke 脚本依次运行 Case A、B、C，并核对状态、审计和副作用次数。
-- [ ] 在浏览器手动完成“提交高风险退款 → 审批 → 恢复 → 查看结果”。
+- [x] 写待审批列表、详情、approve/reject、409 version conflict 和过期状态页面测试。
+- [x] 页面显示冻结 Tool、脱敏参数、风险原因、版本和过期时间，不显示敏感值。
+- [x] Smoke 脚本依次运行 Case A、B、C，并核对状态、审计和副作用次数。
+- [x] 在浏览器手动完成“提交高风险退款 → 审批 → 恢复 → 查看结果”。
 
 **验收目标**
 
@@ -507,10 +507,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 用“第 N 次调用失败”的 Fake 写 F-01a 可选只读 Tool 连续超时测试。
-- [ ] 写 F-01b 关键写 Tool 连续超时测试。
-- [ ] 实现有界重试；只读耗尽后 `resolved + fallback`，关键写耗尽后 `escalated`。
-- [ ] 断言每次尝试均有 audit、retry_count 正确、最终副作用次数为 0。
+- [x] 用“第 N 次调用失败”的 Fake 写 F-01a 可选只读 Tool 连续超时测试。
+- [x] 写 F-01b 关键写 Tool 连续超时测试。
+- [x] 实现有界重试；只读耗尽后 `resolved + fallback`，关键写耗尽后 `escalated`。
+- [x] 断言每次尝试均有 audit、retry_count 正确、最终副作用次数为 0。
 
 **验收目标**
 
@@ -528,10 +528,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] Fake 依次返回两次非法结构，断言两次修复失败后 `escalated`。
-- [ ] Fake 固定循环合法路由，断言第 15 步停止且不发生第 16 次模型/Tool 调用。
-- [ ] 异常摘要只记录验证类别，不回显原始敏感输出。
-- [ ] 运行模型适配层、路由与失败模式测试。
+- [x] Fake 依次返回两次非法结构，断言两次修复失败后 `escalated`。
+- [x] Fake 固定循环合法路由，断言第 15 步停止且不发生第 16 次模型/Tool 调用。
+- [x] 异常摘要只记录验证类别，不回显原始敏感输出。
+- [x] 运行模型适配层、路由与失败模式测试。
 
 **验收目标**
 
@@ -550,10 +550,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 固定输入请求 Supervisor 调用 Tool、Knowledge 调写 Tool、`delete_user` 和绕过审批退款。
-- [ ] 证明网关在实现解析前拒绝未知/越权 Tool。
-- [ ] 检查 Prompt 只强化模型行为，不承担安全边界。
-- [ ] 断言四类攻击均为 rejected、存在审计、业务副作用为 0。
+- [x] 固定输入请求 Supervisor 调用 Tool、Knowledge 调写 Tool、`delete_user` 和绕过审批退款。
+- [x] 证明网关在实现解析前拒绝未知/越权 Tool。
+- [x] 检查 Prompt 只强化模型行为，不承担安全边界。
+- [x] 断言四类攻击均为 rejected、存在审计、业务副作用为 0。
 
 **验收目标**
 
@@ -571,10 +571,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 注入固定 UTC 时钟，测试 TTL 到期前后边界。
-- [ ] 并发发送 approve/approve、approve/reject 和重复 resume。
-- [ ] 断言只有一次状态转移、一次入队、一次执行和一条业务结果。
-- [ ] 证明过期 approval 不能通过直接调用 Worker 绕过 API。
+- [x] 注入固定 UTC 时钟，测试 TTL 到期前后边界。
+- [x] 并发发送 approve/approve、approve/reject 和重复 resume。
+- [x] 断言只有一次状态转移、一次入队、一次执行和一条业务结果。
+- [x] 证明过期 approval 不能通过直接调用 Worker 绕过 API。
 
 **验收目标**
 
@@ -593,10 +593,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 在写 Tool 完成并提交 ledger 后、图状态推进前注入固定崩溃。
-- [ ] 彻底关闭第一 Worker context，再建立新 pool/checkpointer 恢复。
-- [ ] 断言 ledger cache hit、业务副作用仍为 1、图最终进入 resolved。
-- [ ] 用真实 Compose Worker 执行一次恢复演练并记录容器日志摘要。
+- [x] 在写 Tool 完成并提交 ledger 后、图状态推进前注入固定崩溃。
+- [x] 彻底关闭第一 Worker context，再建立新 pool/checkpointer 恢复。
+- [x] 断言 ledger cache hit、业务副作用仍为 1、图最终进入 resolved。
+- [x] 用真实 Compose Worker 执行一次恢复演练并记录容器日志摘要。
 
 **验收目标**
 
@@ -613,10 +613,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 在 Phase 2 完成后的 clean commit 上，以 Day 08 相同模型/端点/数据集运行 `phase2-after.json`，并与 `phase2-before.json` 比较。
-- [ ] 运行 `tests/test_failure_modes.py`、所有 governance/HITL 单元与集成测试。
-- [ ] 用 `scripts/l3_case_smoke.py` 和 `scripts/recovery_drill.py` 验证真实服务。
-- [ ] 只有全部通过后才把 HITL、幂等、恢复和八类失败模式标记为完成。
+- [x] 在 Phase 2 完成后的 clean commit 上，以 Day 08 相同模型/端点/数据集运行 `phase2-after.json`，并与 `phase2-before.json` 比较。
+- [x] 运行 `tests/test_failure_modes.py`、所有 governance/HITL 单元与集成测试。
+- [x] 用 `scripts/l3_case_smoke.py` 和 `scripts/recovery_drill.py` 验证真实服务。
+- [x] 只有全部通过后才把 HITL、幂等、恢复和八类失败模式标记为完成。
 
 **验收目标**
 
@@ -637,10 +637,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] AI 起草 60 条候选，但人类逐条确认 expected intent/handoffs/tools/risk/human/outcome/doc IDs/reference answer。
-- [ ] 最终 80 条覆盖正常、边界、参数缺失、模糊请求、越权、Prompt Injection、Tool timeout、模型错误、HITL、幂等与 F-01～F-08。
-- [ ] 保持五类 intent、八个 Tool、正常/负面/恢复路径都有覆盖。
-- [ ] 将 dataset version 提升为完整评估版本，并由校验器拒绝重复 case_id、未注册 Tool 和非法 handoff。
+- [x] AI 起草 60 条候选，但人类逐条确认 expected intent/handoffs/tools/risk/human/outcome/doc IDs/reference answer。
+- [x] 最终 80 条覆盖正常、边界、参数缺失、模糊请求、越权、Prompt Injection、Tool timeout、模型错误、HITL、幂等与 F-01～F-08。
+- [x] 保持五类 intent、八个 Tool、正常/负面/恢复路径都有覆盖。
+- [x] 将 dataset version 提升为完整评估版本，并由校验器拒绝重复 case_id、未注册 Tool 和非法 handoff。
 
 **验收目标**
 
@@ -658,10 +658,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 用小型固定轨迹为每个指标写精确数值测试。
-- [ ] 实现 Intent Accuracy、Handoff Accuracy、Tool Selection Jaccard、Policy Decision Accuracy、High-risk Bypass Count、Task Success Rate、Retrieval Precision/Recall、轨迹效率、冗余 Tool 率、P95 latency。
-- [ ] Human Escalation Rate 与 average token/cost 作为诊断指标，不设置伪造门槛。
-- [ ] 分母为 0、失败 Case、部分轨迹和非 live cost 缺失均有明确语义。
+- [x] 用小型固定轨迹为每个指标写精确数值测试。
+- [x] 实现 Intent Accuracy、Handoff Accuracy、Tool Selection Jaccard、Policy Decision Accuracy、High-risk Bypass Count、Task Success Rate、Retrieval Precision/Recall、轨迹效率、冗余 Tool 率、P95 latency。
+- [x] Human Escalation Rate 与 average token/cost 作为诊断指标，不设置伪造门槛。
+- [x] 分母为 0、失败 Case、部分轨迹和非 live cost 缺失均有明确语义。
 
 **验收目标**
 
@@ -681,10 +681,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 离线运行真实 Graph + Fake/Recorded Model，不把 Recorded 结果解释为 Prompt 质量。
-- [ ] Live 运行记录 dataset/model/base URL label/Prompt/Git SHA/UTC/token/cost/latency 和逐 Case 轨迹。
-- [ ] 只有显式 `--update-baseline` 生成候选 baseline；普通 CI 只读。
-- [ ] Eval API 从 PostgreSQL 返回运行列表与详情，不扫描任意本地文件。
+- [x] 离线运行真实 Graph + Fake/Recorded Model，不把 Recorded 结果解释为 Prompt 质量。
+- [x] Live 运行记录 dataset/model/base URL label/Prompt/Git SHA/UTC/token/cost/latency 和逐 Case 轨迹。
+- [x] 只有显式 `--update-baseline` 生成候选 baseline；普通 CI 只读。
+- [x] Eval API 从 PostgreSQL 返回运行列表与详情，不扫描任意本地文件。
 
 **验收目标**
 
@@ -703,10 +703,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写 Agent、Dispatcher、Tool、Approval、retry、cache hit、failure 时间线渲染测试。
-- [ ] 实现状态/结果/延迟/重试/operation ID 的结构化展示。
-- [ ] 敏感字段只展示后端脱敏摘要；前端不尝试恢复原值。
-- [ ] 用 Case A/B/C 和 F-07 的真实 trace 手动检查可读性。
+- [x] 写 Agent、Dispatcher、Tool、Approval、retry、cache hit、failure 时间线渲染测试。
+- [x] 实现状态/结果/延迟/重试/operation ID 的结构化展示。
+- [x] 敏感字段只展示后端脱敏摘要；前端不尝试恢复原值。
+- [x] 用 Case A/B/C 和 F-07 的真实 trace 手动检查可读性。
 
 **验收目标**
 
@@ -724,10 +724,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 写运行列表、指标、门槛/实测区分、baseline 对比和失败 Case 展开测试。
-- [ ] 每个数值显示 artifact run_id、Git SHA、dataset version、model 和运行时间。
-- [ ] 门槛使用“门槛”标签，实测使用“本次结果”，缺失值显示“未测”而不是 0。
-- [ ] 运行前端完整质量门禁。
+- [x] 写运行列表、指标、门槛/实测区分、baseline 对比和失败 Case 展开测试。
+- [x] 每个数值显示 artifact run_id、Git SHA、dataset version、model 和运行时间。
+- [x] 门槛使用“门槛”标签，实测使用“本次结果”，缺失值显示“未测”而不是 0。
+- [x] 运行前端完整质量门禁。
 
 **验收目标**
 
@@ -748,10 +748,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 定义 no-op 与 Langfuse exporter Protocol，未配置时不影响主流程。
-- [ ] 导出 request/ticket/trace/agent/prompt version/model/latency/token/cost 和脱敏 outcome。
-- [ ] 测试 exporter 故障不改变业务授权、状态或审计事实。
-- [ ] 若有外部 Langfuse 凭据，运行一次 Case A/B/C 并保存脱敏截图/链接说明；没有则明确记录“可选集成未实测”。
+- [x] 定义 no-op 与 Langfuse exporter Protocol，未配置时不影响主流程。
+- [x] 导出 request/ticket/trace/agent/prompt version/model/latency/token/cost 和脱敏 outcome。
+- [x] 测试 exporter 故障不改变业务授权、状态或审计事实。
+- [x] 若有外部 Langfuse 凭据，运行一次 Case A/B/C 并保存脱敏截图/链接说明；没有则明确记录“可选集成未实测”。
 
 **验收目标**
 
@@ -771,10 +771,10 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 从 clean checkout 视角运行 `docker compose up --build`，而非只做 config 校验。
-- [ ] 等待 PostgreSQL、Redis、API、Worker、Frontend 健康；运行数据库迁移和 demo seed。
-- [ ] 执行 Login、Case A/B/C、Trace、Eval API 的 full-stack smoke。
-- [ ] 备份 PostgreSQL 与 Chroma volume，恢复到隔离目标并验证工单、审批、audit、ledger、checkpoint 和引用。
+- [x] 从 clean checkout 视角运行 `docker compose up --build`，而非只做 config 校验。
+- [x] 等待 PostgreSQL、Redis、API、Worker、Frontend 健康；运行数据库迁移和 demo seed。
+- [x] 执行 Login、Case A/B/C、Trace、Eval API 的 full-stack smoke。
+- [x] 备份 PostgreSQL 与 Chroma volume，恢复到隔离目标并验证工单、审批、audit、ledger、checkpoint 和引用。
 
 **验收目标**
 
@@ -794,11 +794,11 @@ frontend npm run type-check                         passed
 
 **执行**
 
-- [ ] 在 clean commit 上运行 80 条完整 Live Eval，保存真实指标、成本、P95 和所有元数据。
-- [ ] 运行 backend、frontend、migration、failure、offline eval、生成物漂移和 full-stack smoke 全门禁。
-- [ ] 验证 GitHub Actions 三条工作流；Live Eval 由受保护手动 job 上传 artifact。
-- [ ] 按 3 分钟脚本演示：提交 → Timeline → 高风险 → Approval → resume → Trace → Eval Dashboard。
-- [ ] 只从 final artifact 和 CI/服务证据生成 `PORTFOLIO.md` 的完成时 bullet；不手填示例百分比。
+- [x] 在 clean commit 上运行 80 条完整 Live Eval，保存真实指标、成本、P95 和所有元数据。
+- [x] 运行 backend、frontend、migration、failure、offline eval、生成物漂移和 full-stack smoke 全门禁。
+- [x] 验证 GitHub Actions 三条工作流；Live Eval 由受保护手动 job 上传 artifact。
+- [x] 按 3 分钟脚本演示：提交 → Timeline → 高风险 → Approval → resume → Trace → Eval Dashboard。
+- [x] 只从 final artifact 和 CI/服务证据生成 `PORTFOLIO.md` 的完成时 bullet；不手填示例百分比。
 
 **验收目标**
 

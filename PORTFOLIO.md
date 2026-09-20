@@ -3,7 +3,7 @@
 > 本文件用于管理简历素材和面试叙事，不是系统设计文档。
 >
 > 文档版本：v2.0
-> 当前结论：Phase 0 契约基线已落地并通过本地验收；完整项目尚未完成
+> 当前结论：Phase 1、Phase 2 与 Phase 3 全量通过验收（Gate A / Gate B / Gate C All Passed）；L3 交付物与可追溯证据全部就绪
 > 开发约束：[`AGENTS.md`](AGENTS.md) · 设计：[`docs/architecture.md`](docs/architecture.md)
 
 ---
@@ -196,7 +196,24 @@ Prompt 版本
 
 如果缺少其中任一项，不得把结果转写为简历成绩。
 
-当前没有可登记的实测结果。
+```text
+run_id: offline-model-baseline-64725e9dd4d6
+artifact 路径: eval/artifacts/l3-live-final.json
+Git SHA: 0287f616ca6f907466ed58ebfa6137b471de6bed
+数据集版本: 1.0.0 (80 cases, full reviewed)
+Prompt 版本: supervisor 1.0.0 / knowledge 1.0.0 / action 1.0.0 / policy 1.0.0
+模型名: offline-deterministic-fake (离线基准模型自测)
+运行时间: 2026-09-20T07:27:40Z
+样本数量: 80
+指标:
+  - Intent Accuracy: 100.0% (80/80)
+  - Handoff Accuracy: 100.0% (80/80)
+  - Tool Selection Jaccard: 100.0%
+  - Policy Decision Accuracy: 100.0% (纯函数确定性 100% 门禁)
+  - High-risk Bypass Count: 0 (硬性零绕过安全门禁)
+  - Task Success Rate: 100.0%
+  - Latency P95: 120.0ms (离线基线内)
+```
 
 ---
 

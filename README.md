@@ -90,26 +90,29 @@ Action 生成 PendingOperation
 
 ## 当前真实状态
 
-仓库已完成 Phase 0 契约闭合与 Phase 1 只读纵切的全部交付与本地验收；Phase 2 写操作治理与 HITL 尚未开始。
+仓库已完成 Phase 0 契约闭合、Phase 1 只读纵切、Phase 2 写操作治理与 HITL、Phase 3 评估体系/前端大盘/全栈容器化的全部交付与全量门禁验收（Gate A / Gate B / Gate C All Passed）。
 
 当前可以验证的内容：
 
-- Git 仓库、隔离开发分支、Python/前端锁文件和基础质量配置已建立；
-- 四份 Agent contract 与四份 Prompt 已填写并可由脚本校验；
-- 八个 Tool 的 Pydantic v2 模型、Registry、白名单和生成式 JSON Schema 已落库；
-- FastAPI 暴露 13 个接口契约，OpenAPI 与前端 TypeScript 类型均由代码生成；
-- `eval/golden_dataset.json` 包含 20 条已人工确认标签的冒烟评估样本；
-- Docker Compose 提供 PostgreSQL、Redis、API 与 Worker 服务，容器健康启动与依赖关系已验证；
-- PostgreSQL 业务表与 LangGraph checkpoint 表由 Alembic 从空库建出，应用启动时不隐式建表；
-- `/api/auth/login`、`/api/auth/me` 与 `POST /api/tickets` 已实现：Argon2id + JWT 认证、校验 issuer/audience/expiry、单事务写入工单与 outbox 后返回 HTTP 202；
-- `GET /api/tickets`、`GET /api/tickets/{ticket_id}` 与 `GET /api/tickets/{ticket_id}/trace` 已实现：强制请求人数据隔离、返回包含 5 字段完整知识引用的 resolved 结果、以及按时间正序且脱敏的 Trace 事件；
-- ARQ 使用严格 JSON 载荷与确定性 `start:{ticket_id}` 作业 ID，API 不运行 Agent 图；
-- Worker 独占运行 LangGraph 图：基于 PostgreSQL checkpointer 实现确定性恢复，故障重启后不重复执行已完成步骤且终态短路；
-- 四个 Agent 角色、四个只读 Tool、可注入的只读执行网关、四个 SQL Adapter 与本地 Chroma 检索已实现；
-- Vue 3 最小前端已交付：纯内存认证、提交表单后立即清空口令、2 秒自动轮询、后台页面休眠暂停、终态停止以及 5 字段引用卡片展示；
-- 真实 live 评估门禁已通过：`eval/artifacts/phase1-before.json` 与 `phase1-after.json` 均在工作区干净提交上产出，使用同一 OpenAI 兼容模型端点（`deepseek-chat`），元数据严格一致，测得 17/20 意图匹配（仅供回归参考，非简历百分比）。
-
-**仍未实现（Phase 2/3 范围）**：四个业务写 Tool 的真实实现、operation 幂等账本、Policy 风险矩阵、审批流与 interrupt/resume、80+ 条完整评测集与指标看板。
+- Git 仓库、开发分支、Python/前端锁文件和完整质量门禁已建立；
+- 四份 Agent contract 与四份 Prompt 已落地并通过校验；
+- 八个 Tool 的 Pydantic v2 模型、Registry、白名单和生成式 JSON Schema 零漂移；
+- FastAPI 暴露 13 个接口契约全部实装，OpenAPI 与前端 TypeScript 类型均由代码生成；
+- `eval/golden_dataset.json` 包含 80 条已人工审核标签的完整评估样本（5 类意图各 16 条）；
+- Docker Compose 提供 PostgreSQL、Redis、API、Worker 与 Frontend (Nginx SPA) 服务，容器健康检查拓扑就绪；
+- PostgreSQL 业务表、LangGraph checkpoint 表、操作账本与审批表均由 Alembic 从空库构建；
+- `/api/auth/login`、`/api/auth/me` 与 `POST /api/tickets`：Argon2id + JWT 认证、事务写入工单与 outbox、返回 HTTP 202；
+- `GET /api/tickets`、`GET /api/tickets/{ticket_id}` 与 `GET /api/tickets/{ticket_id}/trace`：数据隔离、五字段引用卡片、脱敏 Trace 时间线；
+- `GET /api/approvals`、`GET /api/approvals/{approval_id}` 与 `POST /api/approvals/{approval_id}/decision`：绑定 operation_id 与 args_hash、乐观锁版本控制、批准后 resume 恢复；
+- `GET /api/eval/runs` 与 `GET /api/eval/runs/{run_id}`：支持离线与在线 Eval 运行记录持久化与报告查询；
+- ARQ 使用严格 JSON 载荷与确定性作业 ID，API 不运行 Agent 图；
+- Worker 独占运行 LangGraph 图：PostgreSQL checkpointer 实现确定性恢复，故障重启后不重复执行已完成步骤且终态短路；
+- 四个 Agent 角色固定，Supervisor 零 Tool 权限，写操作必须经由统一治理网关（Schema → 白名单 → Policy → 账本幂等/锁 → 超时重试 → 脱敏审计）；
+- 纯函数确定性 Policy 风险矩阵，退款超额硬性要求人工审批；
+- 唯一 Skill `password_reset` 固定流程并包含确定性错误兜底；
+- Vue 3 交付 Login、Tickets、Approvals、TraceViewer、EvalDashboard 五大页面，严格区分“设计门槛”与“本次结果”；
+- 8 类确定性失败模式（F-01～F-08）在 `tests/test_failure_modes.py` 全覆盖；
+- 终版评估工件 `eval/artifacts/l3-live-final.json` 与验收报告 `docs/evidence/l3/final-acceptance.md` 固化归档。
 
 ### Phase 0 状态
 
@@ -124,8 +127,6 @@ Action 生成 PendingOperation
 | 主文档同步 | 完成 |
 | 最终验收门禁 | 完成 |
 
-Phase 0 建立后续开发必须遵守的契约基线。
-
 ### Phase 1 状态
 
 | 任务 | 状态 |
@@ -139,6 +140,34 @@ Phase 0 建立后续开发必须遵守的契约基线。
 | 工单查询与 Trace API | 完成 |
 | Vue 最小切片、CI 与 Phase 1 验收 | 完成 |
 | live 模型前后对比门禁 | 完成（`phase1-before.json` vs `phase1-after.json`） |
+
+### Phase 2 状态
+
+| 任务 | 状态 |
+|---|---|
+| 数据库操作账本、审批表与退款/权限业务表迁移 | 完成 |
+| 纯函数 Policy 风险评估与退款阈值控制 | 完成 |
+| 统一 Tool 执行网关、白名单、账本幂等与审计 | 完成 |
+| 四个写 Tool 实现与 Password Reset Skill | 完成 |
+| 审批数据仓储与审批 API（乐观锁/TTL） | 完成 |
+| LangGraph 写分支、interrupt 挂起与 resume 恢复 | 完成 |
+| 前端 Approvals 审批管理页面 | 完成 |
+| F-01~F-08 确定性失败注入测试与容灾演练 | 完成 |
+| Gate B 治理门禁与对比评测产物 | 完成（`phase2-after.json`） |
+
+### Phase 3 状态
+
+| 任务 | 状态 |
+|---|---|
+| 80-Case 完整 Golden Dataset 人工审核 | 完成 |
+| 确定性评估指标引擎与 13 项门槛判定 | 完成 |
+| Eval API、官方基线固化与运行器升级 | 完成 |
+| 前端 TraceViewer 轨迹审计页面 | 完成 |
+| 前端 EvalDashboard 质量看板 | 完成 |
+| TraceExporter 协议与可选 Langfuse 适配器 | 完成 |
+| 前端 Multi-Stage 容器化与 Compose 全栈拓扑 | 完成 |
+| 自动化巡检与灾备演练脚本 | 完成 |
+| 终版评测工件、Demo 脚本与 Gate C 最终验收 | 完成（`l3-live-final.json` / `final-acceptance.md`） |
 
 ---
 
@@ -183,11 +212,11 @@ high_risk
 | GET | `/api/tickets` | 当前用户工单列表 | 已实现 |
 | GET | `/api/tickets/{ticket_id}` | 查询状态与结果 | 已实现 |
 | GET | `/api/tickets/{ticket_id}/trace` | 查询脱敏轨迹 | 已实现 |
-| GET | `/api/approvals` | approver 的待审批列表 | 501 |
-| GET | `/api/approvals/{approval_id}` | 审批详情 | 501 |
-| POST | `/api/approvals/{approval_id}/decision` | approve/reject，带乐观锁版本 | 501 |
-| GET | `/api/eval/runs` | Eval 历史 | 501 |
-| GET | `/api/eval/runs/{run_id}` | 单次 Eval 报告 | 501 |
+| GET | `/api/approvals` | approver 的待审批列表 | 已实现 |
+| GET | `/api/approvals/{approval_id}` | 审批详情 | 已实现 |
+| POST | `/api/approvals/{approval_id}/decision` | approve/reject，带乐观锁版本 | 已实现 |
+| GET | `/api/eval/runs` | Eval 历史 | 已实现 |
+| GET | `/api/eval/runs/{run_id}` | 单次 Eval 报告 | 已实现 |
 | GET | `/health` | 进程存活 | 已实现 |
 | GET | `/ready` | PostgreSQL/Redis/配置就绪 | 已实现，依赖未就绪时 503 |
 
@@ -195,15 +224,15 @@ OpenAPI 是前后端接口唯一来源。前端类型通过 `openapi-typescript`
 
 ---
 
-## 计划页面
+## 交付页面
 
-| 路由 | 页面 | 功能 |
-|---|---|---|
-| `/login` | Login | 选择/登录模拟身份 |
-| `/tickets` | TicketSubmit | 创建、列表、轮询、最终结果 |
-| `/approvals` | Approval | 查看绑定操作并 approve/reject |
-| `/traces/:ticketId` | TraceViewer | Agent、Tool、审批和失败时间线 |
-| `/eval` | EvalDashboard | 门槛、基线、运行历史和对比 |
+| 路由 | 页面 | 功能 | 状态 |
+|---|---|---|---|
+| `/login` | Login | 选择/登录模拟身份 | 已交付 |
+| `/tickets` | TicketSubmit | 创建、列表、轮询、最终结果 | 已交付 |
+| `/approvals` | Approval | 查看绑定操作并 approve/reject | 已交付 |
+| `/traces/:ticketId` | TraceViewer | Agent、Tool、审批和失败时间线 | 已交付 |
+| `/eval` | EvalDashboard | 门槛、基线、运行历史和对比 | 已交付 |
 
 使用轮询，不实现 WebSocket。
 

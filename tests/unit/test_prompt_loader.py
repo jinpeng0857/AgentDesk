@@ -20,6 +20,12 @@ EXPECTED_OUTPUT_MODELS = {
     "action": "ActionProposal",
     "policy": "PolicyExplanation",
 }
+EXPECTED_PROMPT_VERSIONS = {
+    "supervisor": "1.0.6",
+    "knowledge": "1.0.0",
+    "action": "1.0.1",
+    "policy": "1.0.0",
+}
 
 
 @pytest.mark.parametrize("agent_id", sorted(PROMPT_FILES))
@@ -27,7 +33,7 @@ def test_every_prompt_loads_with_its_declared_model(agent_id: str) -> None:
     prompt = load_prompt(agent_id)  # type: ignore[arg-type]
 
     assert prompt.agent_id == agent_id
-    assert prompt.version == "1.0.0"
+    assert prompt.version == EXPECTED_PROMPT_VERSIONS[agent_id]
     assert prompt.output_schema.model == EXPECTED_OUTPUT_MODELS[agent_id]
     assert prompt.output_schema.strict is True
     assert prompt.role.strip()
@@ -39,7 +45,9 @@ def test_load_all_prompts_returns_version_map() -> None:
     prompts = load_all_prompts()
 
     assert set(prompts) == set(PROMPT_FILES)
-    assert {prompt.version for prompt in prompts.values()} == {"1.0.0"}
+    assert {agent_id: prompt.version for agent_id, prompt in prompts.items()} == (
+        EXPECTED_PROMPT_VERSIONS
+    )
 
 
 def test_unknown_agent_id_is_rejected() -> None:

@@ -49,7 +49,9 @@ def test_scanner_allows_domain_import(tmp_path: Path) -> None:
 
 
 def test_domain_layers_do_not_import_service_or_infrastructure() -> None:
-    domain_roots = tuple(REPOSITORY_ROOT / name for name in ("agents", "tools", "skills"))
+    domain_roots = tuple(
+        REPOSITORY_ROOT / "src" / name for name in ("agents", "tools", "skills")
+    )
 
     assert scan_import_roots(domain_roots, FORBIDDEN_ROOTS) == []
 
@@ -74,7 +76,7 @@ def test_compose_services_configuration() -> None:
     for app_name in ("api", "worker"):
         app = services[app_name]
         assert app["build"]["context"] == "."
-        assert app["build"]["dockerfile"] == "backend/Dockerfile"
+        assert app["build"]["dockerfile"] == "src/backend/Dockerfile"
         assert app["command"]
         assert app["depends_on"]["postgres"]["condition"] == "service_healthy"
         assert app["depends_on"]["redis"]["condition"] == "service_healthy"
@@ -83,6 +85,6 @@ def test_compose_services_configuration() -> None:
 
 
 def test_api_layer_does_not_import_graph_layer() -> None:
-    api_root = (REPOSITORY_ROOT / "backend" / "api",)
+    api_root = (REPOSITORY_ROOT / "src" / "backend" / "api",)
     forbidden = {"backend.graph", "graph"}
     assert scan_import_roots(api_root, forbidden) == []

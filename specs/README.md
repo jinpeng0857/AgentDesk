@@ -27,14 +27,16 @@
 
 | 文件 | 内容 | 权威来源 |
 |---|---|---|
-| `agent_contracts/supervisor.yaml` | Supervisor 输入、输出和决策边界 | [`docs/architecture.md` §7.1](../docs/architecture.md)、`agents/schemas.py`、`prompts/supervisor.yaml` |
-| `agent_contracts/knowledge.yaml` | Knowledge 输入、输出和只读边界 | [`docs/architecture.md` §7.2](../docs/architecture.md)、`agents/schemas.py`、`prompts/knowledge.yaml` |
-| `agent_contracts/action.yaml` | Action propose/execute 边界和 Tool 白名单 | [`docs/architecture.md` §7.3](../docs/architecture.md)、`agents/schemas.py`、`tools/registry.py`、`prompts/action.yaml` |
-| `agent_contracts/policy.yaml` | Policy 确定性判定边界 | [`docs/architecture.md` §7.4](../docs/architecture.md)、`agents/schemas.py`、`prompts/policy.yaml` |
-| `tool_schemas/tools.json` | 八个 Tool 的可检查 Schema 快照 | [`docs/architecture.md` §9](../docs/architecture.md)、`tools/registry.py`、`tools/schemas.py` |
-| `openapi/openapi.json` | API 契约快照，当前标记 `x-agentdesk-status: phase-1-partial` | [`docs/architecture.md` §11.2](../docs/architecture.md)、`backend/main.py`、`backend/api/` |
+| `agent_contracts/supervisor.yaml` | Supervisor 输入、输出和决策边界 | [`docs/architecture.md` §7.1](../docs/architecture.md)、`src/agents/schemas.py`、`resources/prompts/supervisor.yaml` |
+| `agent_contracts/knowledge.yaml` | Knowledge 输入、输出和只读边界 | [`docs/architecture.md` §7.2](../docs/architecture.md)、`src/agents/schemas.py`、`resources/prompts/knowledge.yaml` |
+| `agent_contracts/action.yaml` | Action propose/execute 边界和 Tool 白名单 | [`docs/architecture.md` §7.3](../docs/architecture.md)、`src/agents/schemas.py`、`src/tools/registry.py`、`resources/prompts/action.yaml` |
+| `agent_contracts/policy.yaml` | Policy 确定性判定边界 | [`docs/architecture.md` §7.4](../docs/architecture.md)、`src/agents/schemas.py`、`resources/prompts/policy.yaml` |
+| `tool_schemas/tools.json` | 八个 Tool 的可检查 Schema 快照 | [`docs/architecture.md` §9](../docs/architecture.md)、`src/tools/registry.py`、`src/tools/schemas.py` |
+| `openapi/openapi.json` | FastAPI 代码生成的 API 契约快照 | [`docs/architecture.md` §11.2](../docs/architecture.md)、`src/backend/main.py`、`src/backend/api/` |
 
-`eval/golden_dataset.json` 位于 `eval/`，不属于本目录；它是人工审核的评估输入，不是由代码生成的接口契约。
+`resources/evaluation/golden_dataset.json` 是 80 条人工审核的评估输入，不属于本目录，也不是由代码生成的接口契约。源码包位于 `src/eval/`。
+
+验收登记表位于 `specs/acceptance/test_matrix.yaml`，校验器会检查 ID 唯一性、测试节点存在性、全部 H-01～H-26/F-01a/b～F-08 覆盖，以及 CI/人工入口。
 
 ---
 
@@ -43,8 +45,8 @@
 以下 JSON 文件是生成物，不得手工修改：
 
 ```powershell
-uv run python scripts/export_tool_schemas.py
-uv run python scripts/export_openapi.py
+uv run python scripts/maintenance/export_tool_schemas.py
+uv run python scripts/maintenance/export_openapi.py
 
 Set-Location frontend
 npm run generate:api-types
@@ -53,10 +55,11 @@ npm run generate:api-types
 提交前使用只读检查确认生成物没有漂移：
 
 ```powershell
-uv run python scripts/export_tool_schemas.py --check
-uv run python scripts/export_openapi.py --check
-uv run python scripts/validate_agent_contracts.py
-uv run python scripts/validate_golden_dataset.py
+uv run python scripts/maintenance/export_tool_schemas.py --check
+uv run python scripts/maintenance/export_openapi.py --check
+uv run python scripts/maintenance/validate_agent_contracts.py
+uv run python scripts/maintenance/validate_golden_dataset.py
+uv run python scripts/maintenance/validate_test_matrix.py
 
 Set-Location frontend
 npm run generate:api-types

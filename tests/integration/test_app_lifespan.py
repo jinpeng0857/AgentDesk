@@ -19,7 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from backend.config import AppSettings
 from backend.db.models import JobOutboxRecord, TicketRecord
 from backend.main import create_app
-from tests.integration.conftest import REQUESTER_PASSWORD, REQUESTER_USERNAME
+from tests.integration.conftest import (
+    DEFAULT_TEST_REDIS_URL,
+    REQUESTER_PASSWORD,
+    REQUESTER_USERNAME,
+    configured_test_redis_url,
+)
 
 
 @pytest.fixture
@@ -44,6 +49,14 @@ async def test_lifespan_builds_the_engine_and_redis_pool(live_app: FastAPI) -> N
     assert live_app.state.engine is not None
     assert live_app.state.redis is not None
     assert live_app.state.session_factory is not None
+
+
+def test_test_redis_url_honors_acceptance_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/15")
+
+    assert configured_test_redis_url() == "redis://redis:6379/15"
+    monkeypatch.delenv("REDIS_URL")
+    assert configured_test_redis_url() == DEFAULT_TEST_REDIS_URL
 
 
 async def test_ready_reports_ok_with_real_dependencies(live_client: AsyncClient) -> None:
@@ -97,11 +110,10 @@ async def test_login_and_submission_work_over_the_real_app(
         assert outbox.published_at is None
 
 
-async def test_stubbed_routes_still_return_501_over_the_real_app(
+async def test_eval_runs_route_returns_its_list_contract_over_the_real_app(
     live_client: AsyncClient,
 ) -> None:
     response = await live_client.get("/api/eval/runs")
 
-    assert response.status_code == 501
-    assert response.json()["error"]["code"] == "NOT_IMPLEMENTED"
-
+    assert response.status_code == 200, response.text
+    assert isinstance(response.json(), list)

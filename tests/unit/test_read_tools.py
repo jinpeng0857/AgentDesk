@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.fakes.tools import (
+from tests.support.fakes.tools import (
     RecordingKnowledgeStore,
     RecordingOrderRepository,
     RecordingServiceRepository,
@@ -39,12 +39,13 @@ async def test_query_order_delegates_to_the_repository() -> None:
 
 
 async def test_check_service_delegates_to_the_repository() -> None:
-    repository = RecordingServiceRepository(result=service_result())
+    expected = service_result()
+    repository = RecordingServiceRepository(result=expected)
     args = CheckServiceArgs(service_name="vpn")
 
     result = await check_service(args, repository)
 
-    assert result == service_result()
+    assert result == expected
     assert repository.calls == [args]
 
 

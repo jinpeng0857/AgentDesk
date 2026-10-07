@@ -26,6 +26,7 @@ from eval.schemas import (
     GoldenCase,
     GoldenDataset,
     MetricsSummary,
+    PolicyDecisionObservation,
 )
 
 
@@ -112,6 +113,22 @@ def test_handoff_accuracy_computation(sample_dataset: GoldenDataset) -> None:
     assert acc == Decimal("0.8333")
 
 
+def test_handoff_accuracy_penalizes_unexpected_and_out_of_order_edges(
+    sample_dataset: GoldenDataset,
+) -> None:
+    result = CaseExecutionResult(
+        case_id="NET-001",
+        actual_handoffs=[
+            ExpectedHandoff(source="supervisor", target="action_propose"),
+            ExpectedHandoff(source="supervisor", target="knowledge"),
+            ExpectedHandoff(source="knowledge", target="supervisor"),
+            ExpectedHandoff(source="supervisor", target="finalize"),
+        ],
+    )
+
+    assert compute_handoff_accuracy([result], sample_dataset) == Decimal("0.7500")
+
+
 def test_tool_selection_jaccard_computation(sample_dataset: GoldenDataset) -> None:
     results = [
         CaseExecutionResult(case_id="NET-001", actual_tools=["search_knowledge"]),  # 1/1 = 1.0
@@ -133,8 +150,13 @@ def test_policy_decision_accuracy_and_bypass_count(sample_dataset: GoldenDataset
         ),
         CaseExecutionResult(
             case_id="RFD-003",
-            predicted_risk=RiskLevel.HIGH,
-            actual_require_human=True,
+            policy_decisions=[
+                PolicyDecisionObservation(
+                    risk_level=RiskLevel.HIGH,
+                    require_human=True,
+                    allowed=True,
+                )
+            ],
             high_risk_bypass=False,
         ),
     ]
@@ -143,6 +165,12 @@ def test_policy_decision_accuracy_and_bypass_count(sample_dataset: GoldenDataset
 
     assert acc == Decimal("1.0000")
     assert bypass == 0
+
+
+def test_policy_accuracy_does_not_treat_unexecuted_policy_as_a_pass(
+    sample_dataset: GoldenDataset,
+) -> None:
+    assert compute_policy_decision_accuracy([], sample_dataset) == Decimal("0.0000")
 
 
 def test_retrieval_precision_and_recall(sample_dataset: GoldenDataset) -> None:
@@ -216,6 +244,7 @@ def test_threshold_gate_evaluation() -> None:
         human_escalation_rate=Decimal("0.0500"),
         total_cases=20,
         failed_cases=0,
+        policy_decisions_evaluated=1,
     )
     gate = evaluate_thresholds(passing_metrics)
     assert gate.passed is True

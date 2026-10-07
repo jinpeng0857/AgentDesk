@@ -10,7 +10,7 @@ import pytest
 from agents.schemas import ToolOutcome
 from backend.governance.audit import ToolAttempt, redact_mapping
 from backend.governance.executor import ReadToolExecutor, ToolAdapters
-from tests.fakes.tools import (
+from tests.support.fakes.tools import (
     DisabledAccessRequestService,
     DisabledCredentialService,
     DisabledRefundService,

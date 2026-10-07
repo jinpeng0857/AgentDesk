@@ -1,586 +1,387 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useEvalStore } from '../stores/eval'
 import type { EvalMetricResponse } from '../api/types'
-
-const router = useRouter()
+import AppShell from '../components/AppShell.vue'
+import UiIcon from '../components/UiIcon.vue'
+import { formatDate } from './presentation'
 const authStore = useAuthStore()
 const evalStore = useEvalStore()
-
 const selectedRunId = ref<string | null>(null)
-
-// Hard safety and quality gates as defined in AGENTS.md §7.2
-const DESIGN_THRESHOLDS: Record<string, { threshold: string; type: 'min' | 'max' | 'exact' }> = {
-  intent_accuracy: { threshold: '≥ 90%', type: 'min' },
-  handoff_accuracy: { threshold: '≥ 90%', type: 'min' },
-  tool_selection_jaccard: { threshold: '≥ 85%', type: 'min' },
-  policy_decision_accuracy: { threshold: '100%', type: 'exact' },
-  high_risk_bypass_count: { threshold: '= 0', type: 'exact' },
-  task_success_rate: { threshold: '≥ 80%', type: 'min' },
-  trajectory_efficiency: { threshold: '≥ Baseline', type: 'min' },
-  redundant_tool_call_rate: { threshold: '≤ Baseline', type: 'max' },
-  latency_p95_ms: { threshold: '≤ Baseline 120%', type: 'max' },
+const metricLabels: Record<string, string> = {
+  intent_accuracy: '意图分类准确率',
+  handoff_accuracy: '角色交接准确率',
+  tool_selection_jaccard: '工具选择 Jaccard',
+  policy_decision_accuracy: 'Policy 判定准确率',
+  high_risk_bypass_count: '高风险绕过次数',
+  task_success_rate: '任务成功率',
+  trajectory_efficiency: '轨迹效率',
+  redundant_tool_call_rate: '冗余工具调用率',
+  latency_p95_ms: 'P95 延迟',
 }
-
+const DESIGN_THRESHOLDS: Record<string, string> = {
+  intent_accuracy: '≥ 90%',
+  handoff_accuracy: '≥ 90%',
+  tool_selection_jaccard: '≥ 85%',
+  policy_decision_accuracy: '100%',
+  high_risk_bypass_count: '= 0',
+  task_success_rate: '≥ 80%',
+  trajectory_efficiency: '≥ 对照基线',
+  redundant_tool_call_rate: '≤ 对照基线',
+  latency_p95_ms: '≤ 对照基线 120%',
+}
+const numericThresholds: Record<string, number> = {
+  intent_accuracy: 0.9,
+  handoff_accuracy: 0.9,
+  tool_selection_jaccard: 0.85,
+  policy_decision_accuracy: 1,
+  high_risk_bypass_count: 0,
+  task_success_rate: 0.8,
+}
+function valueOf(metric: EvalMetricResponse): number | null {
+  if (String(metric.value).trim() === '') return null
+  const value = Number(metric.value)
+  return Number.isFinite(value) ? value : null
+}
+function formatMetricValue(metric: EvalMetricResponse): string {
+  const value = valueOf(metric)
+  if (value === null) return '未测'
+  if (metric.unit === 'ratio') return `${(value * 100).toFixed(1)}%`
+  if (metric.unit === 'ms') return `${value.toFixed(0)} ms`
+  return value.toString()
+}
+function gateStatus(metric: EvalMetricResponse): 'pass' | 'fail' | 'unknown' {
+  const value = valueOf(metric)
+  const threshold = numericThresholds[metric.name]
+  if (value === null || threshold === undefined) return 'unknown'
+  if (
+    metric.name === 'high_risk_bypass_count' ||
+    metric.name === 'policy_decision_accuracy'
+  )
+    return value === threshold ? 'pass' : 'fail'
+  return value >= threshold ? 'pass' : 'fail'
+}
+const metrics = computed(() => evalStore.currentRun?.metrics || [])
+const isOfflineFake = computed(() => evalStore.currentRun?.mode === 'offline')
 onMounted(async () => {
   evalStore.setApiClient(authStore.apiClient)
+  await refreshRuns()
+})
+async function refreshRuns(): Promise<void> {
   try {
     const runs = await evalStore.fetchRuns()
-    if (runs.length > 0 && runs[0]) {
-      await selectRun(runs[0].run_id)
-    }
+    const id = runs.some((r) => r.run_id === selectedRunId.value)
+      ? selectedRunId.value
+      : runs[0]?.run_id
+    if (id) await selectRun(id)
+    else evalStore.clearCurrentRun()
   } catch {
-    // Handled in store
+    evalStore.clearCurrentRun()
   }
-})
-
-async function selectRun(runId: string): Promise<void> {
-  selectedRunId.value = runId
+}
+async function selectRun(id: string): Promise<void> {
+  selectedRunId.value = id
   try {
-    await evalStore.fetchRun(runId)
+    await evalStore.fetchRun(id)
   } catch {
-    // Handled in store
+    /* Store exposes the typed API error. */
   }
 }
-
-function handleBackToTickets(): void {
-  router.push('/tickets')
-}
-
-function formatMetricValue(m: EvalMetricResponse): string {
-  const val = Number(m.value)
-  if (isNaN(val)) return '未测'
-  if (m.unit === 'ratio') {
-    return `${(val * 100).toFixed(1)}%`
-  }
-  if (m.unit === 'ms') {
-    return `${val.toFixed(0)} ms`
-  }
-  return val.toString()
-}
-
-function getThresholdLabel(metricName: string): string {
-  const t = DESIGN_THRESHOLDS[metricName]
-  return t ? t.threshold : '未配置门槛'
-}
-
-function isGatePassing(metricName: string, valueStr: string): boolean {
-  const val = Number(valueStr)
-  if (isNaN(val)) return false
-  if (metricName === 'intent_accuracy') return val >= 0.90
-  if (metricName === 'handoff_accuracy') return val >= 0.90
-  if (metricName === 'tool_selection_jaccard') return val >= 0.85
-  if (metricName === 'policy_decision_accuracy') return val >= 1.00
-  if (metricName === 'high_risk_bypass_count') return val === 0
-  if (metricName === 'task_success_rate') return val >= 0.80
-  return true
-}
-
-const currentMetrics = computed<EvalMetricResponse[]>(() => {
-  return evalStore.currentRun?.metrics || []
-})
-
-const isOfflineFake = computed(() => {
-  return evalStore.currentRun?.mode === 'offline'
-})
 </script>
-
 <template>
-  <div class="eval-dashboard-layout">
-    <!-- Top Navigation Bar -->
-    <header class="navbar">
-      <div class="brand-group">
-        <h1 class="brand-title">AgentDesk</h1>
-        <span class="sub-title">Evaluation Benchmark & Quality Gates</span>
+  <AppShell
+    active="eval"
+    title="评估记录"
+    subtitle="查看运行结果及其来源，在证据范围内判断系统表现。"
+    eyebrow="EVALUATION EVIDENCE"
+  >
+    <template #actions
+      ><button
+        class="button"
+        :disabled="evalStore.loading"
+        @click="refreshRuns"
+      >
+        <UiIcon name="refresh" :size="16" />刷新
+      </button></template
+    >
+    <div class="notice warning eval-status">
+      <UiIcon name="chart" :size="19" />
+      <div>
+        <strong>当前端到端验收状态待更新</strong>
+        <p>
+          运行记录不等于完整验收结论。候选结果需人工审阅，离线测试和模型分类成绩各有自己的证据范围。
+        </p>
       </div>
-      <div class="nav-actions">
-        <button class="btn-secondary" @click="handleBackToTickets">
-          Back to Tickets
+      <span class="badge warning">候选记录</span>
+    </div>
+    <div v-if="evalStore.error" class="error-banner" role="alert">
+      {{ evalStore.error }}
+    </div>
+    <div class="split-workspace">
+      <section class="panel" aria-labelledby="eval-list-heading">
+        <div class="panel-heading">
+          <h3 id="eval-list-heading">运行记录</h3>
+          <span class="mono muted">{{ evalStore.runs.length }}</span>
+        </div>
+        <div v-if="!evalStore.runs.length" class="empty-state compact">
+          <UiIcon name="chart" :size="30" />
+          <p>
+            {{
+              evalStore.loading ? '正在加载评估记录…' : '数据库中暂无评估记录。'
+            }}
+          </p>
+          <small class="eval-empty-note"
+            >本地 JSON 候选文件不会自动出现在这里。</small
+          >
+        </div>
+        <button
+          v-for="run in evalStore.runs"
+          :key="run.run_id"
+          :class="['list-row', { selected: selectedRunId === run.run_id }]"
+          :aria-pressed="selectedRunId === run.run_id"
+          @click="selectRun(run.run_id)"
+        >
+          <div class="row-top">
+            <span :class="['badge', run.mode]">{{
+              run.mode === 'offline' ? 'offline · 离线' : 'live · 真实模型'
+            }}</span
+            ><time class="row-meta" :datetime="run.created_at">{{
+              formatDate(run.created_at)
+            }}</time>
+          </div>
+          <div class="run-id mono">{{ run.run_id }}</div>
+          <div class="row-meta">
+            Dataset: v{{ run.dataset_version
+            }}<span class="mono">{{ run.git_sha.slice(0, 7) }}</span>
+          </div>
         </button>
-      </div>
-    </header>
-
-    <main class="content-container">
-      <!-- Left Sidebar: Evaluation Runs List -->
-      <section class="sidebar">
-        <div class="card runs-card">
-          <div class="runs-header">
-            <h3>Evaluation Runs</h3>
-            <span class="run-count">{{ evalStore.runs.length }} runs</span>
-          </div>
-
-          <div v-if="evalStore.loading && evalStore.runs.length === 0" class="loading-state">
-            Loading evaluation runs...
-          </div>
-
-          <div v-else-if="evalStore.runs.length === 0" class="empty-state">
-            No evaluation runs recorded in PostgreSQL.
-          </div>
-
-          <ul v-else class="run-list">
-            <li
-              v-for="run in evalStore.runs"
-              :key="run.run_id"
-              :class="['run-item', { active: selectedRunId === run.run_id }]"
-              @click="selectRun(run.run_id)"
-            >
-              <div class="run-item-top">
-                <span :class="['mode-badge', `mode-${run.mode}`]">{{ run.mode }}</span>
-                <span class="run-date">{{ new Date(run.created_at).toLocaleDateString() }}</span>
-              </div>
-              <div class="run-id-text monospace">{{ run.run_id }}</div>
-              <div class="run-meta-sub">
-                <span>Dataset: v{{ run.dataset_version }}</span>
-                <span class="monospace">Git: {{ run.git_sha.slice(0, 7) }}</span>
-              </div>
-            </li>
-          </ul>
-        </div>
       </section>
-
-      <!-- Right Main Content: Selected Run Details -->
-      <section class="main-content">
-        <div v-if="evalStore.error" class="error-banner">
-          {{ evalStore.error }}
-        </div>
-
-        <div v-if="evalStore.currentRun" class="card detail-card">
-          <!-- Run Metadata Header -->
-          <div class="detail-header">
+      <section
+        class="panel"
+        aria-labelledby="eval-detail-heading"
+        :aria-busy="evalStore.loading"
+      >
+        <template v-if="evalStore.currentRun">
+          <div class="panel-heading">
             <div>
-              <div class="title-with-badge">
-                <h2>Run Details</h2>
-                <span :class="['mode-badge', `mode-${evalStore.currentRun.mode}`]">
-                  {{ evalStore.currentRun.mode }} mode
-                </span>
+              <h2 id="eval-detail-heading">运行详情</h2>
+              <p class="mono">{{ evalStore.currentRun.run_id }}</p>
+            </div>
+            <span :class="['badge', evalStore.currentRun.mode]">{{
+              evalStore.currentRun.mode
+            }}</span>
+          </div>
+          <div class="panel-body">
+            <dl class="metadata">
+              <div>
+                <dt>模型</dt>
+                <dd>{{ evalStore.currentRun.model }}</dd>
               </div>
-              <p class="monospace run-uuid">Run ID: {{ evalStore.currentRun.run_id }}</p>
-            </div>
-            <div class="run-time-info">
-              <span>{{ new Date(evalStore.currentRun.created_at).toLocaleString() }}</span>
-            </div>
-          </div>
-
-          <!-- Metadata Grid -->
-          <div class="meta-grid">
-            <div class="meta-item">
-              <span class="meta-label">Model Target:</span>
-              <span class="meta-value font-bold">{{ evalStore.currentRun.model }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Git SHA:</span>
-              <span class="meta-value monospace">{{ evalStore.currentRun.git_sha }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Dataset Version:</span>
-              <span class="meta-value">v{{ evalStore.currentRun.dataset_version }} (Reviewed)</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Prompt Versions:</span>
-              <span class="meta-value monospace">
-                {{ Object.entries(evalStore.currentRun.prompt_versions).map(([k, v]) => `${k}:${v}`).join(', ') }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Methodology & Scientific Rigor Banner -->
-          <div class="rigor-notice-box">
-            <span class="rigor-icon">⚖️</span>
-            <div class="rigor-content">
-              <strong>工程规范与评测口径说明：</strong>
-              <p>
-                下方表格严格区分<strong>“门槛 (Design Threshold)”</strong>与<strong>“本次结果 (Actual Observed)”</strong>。
-                所有指标均由纯函数确定性计算（Jaccard 集合相似度、状态拓扑比较、一票否决安全门禁），绝不调用 LLM 充当主观裁判。
-                <span v-if="isOfflineFake" class="fake-warning">
-                  ⚠️ 本次为离线模式（Deterministic Fake Model），用于验证执行流转与元数据闭环，不可解释为真实 Prompt/模型质量。
-                </span>
-              </p>
+              <div>
+                <dt>数据集版本</dt>
+                <dd>v{{ evalStore.currentRun.dataset_version }}</dd>
+              </div>
+              <div>
+                <dt>运行时间</dt>
+                <dd>{{ formatDate(evalStore.currentRun.created_at) }}</dd>
+              </div>
+            </dl>
+            <details class="eval-provenance">
+              <summary>查看代码与 Prompt 版本</summary>
+              <dl>
+                <dt>Git SHA</dt>
+                <dd class="mono">{{ evalStore.currentRun.git_sha }}</dd>
+                <dt>Prompt 版本</dt>
+                <dd class="mono">
+                  {{
+                    Object.entries(evalStore.currentRun.prompt_versions)
+                      .map(([key, value]) => `${key}:${value}`)
+                      .join(', ')
+                  }}
+                </dd>
+              </dl>
+            </details>
+            <div class="notice neutral methodology">
+              <UiIcon name="book" :size="17" />
+              <div>
+                <strong>评测口径说明</strong>
+                <p>
+                  指标按纯函数确定性计算。表中仅对固定门槛作比较；当前接口未提供评估阶段、样本分母和对照基线，不能据此认定完整端到端验收通过。
+                </p>
+                <p v-if="isOfflineFake" class="fake-warning">
+                  离线 Fake 仅验证测试流程和契约，不代表真实模型或 Prompt 质量。
+                </p>
+              </div>
             </div>
           </div>
-
-          <!-- Deterministic Metrics & Gates Table -->
-          <div class="section-box metrics-section">
-            <h3>Deterministic Quality & Safety Gates</h3>
+          <div class="metrics-heading">
+            <h3>质量与安全指标</h3>
+            <span>门槛为设计要求</span>
+          </div>
+          <div v-if="metrics.length" class="table-scroll">
             <table class="metrics-table">
               <thead>
                 <tr>
-                  <th>Metric Name</th>
-                  <th>门槛 (Design Threshold)</th>
-                  <th>本次结果 (Actual Observed)</th>
-                  <th>Gate Status</th>
+                  <th scope="col">指标</th>
+                  <th scope="col">门槛 (Design Threshold)</th>
+                  <th scope="col">本次结果 (Actual Observed)</th>
+                  <th scope="col">比较结果</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="metric in currentMetrics"
+                  v-for="metric in metrics"
                   :key="metric.name"
-                  :class="{ 'high-risk-row': metric.name === 'high_risk_bypass_count' }"
+                  :data-metric="metric.name"
+                  :class="{
+                    'high-risk-row': metric.name === 'high_risk_bypass_count',
+                  }"
                 >
-                  <td class="metric-name-cell">
-                    <span class="metric-title monospace">{{ metric.name }}</span>
+                  <td>
+                    <strong class="metric-title">{{
+                      metricLabels[metric.name] || metric.name
+                    }}</strong
+                    ><span class="metric-key mono">{{ metric.name }}</span>
                   </td>
-                  <td class="threshold-cell">
-                    <span class="threshold-badge">
-                      门槛: {{ getThresholdLabel(metric.name) }}
-                    </span>
-                  </td>
-                  <td class="value-cell font-bold">
-                    <span class="actual-value">
-                      {{ formatMetricValue(metric) }}
-                    </span>
-                  </td>
-                  <td class="status-cell">
-                    <span
-                      v-if="isGatePassing(metric.name, metric.value.toString())"
-                      class="gate-badge gate-pass"
+                  <td>
+                    <span class="threshold-label"
+                      >门槛:
+                      {{ DESIGN_THRESHOLDS[metric.name] || '未配置' }}</span
                     >
-                      ✓ PASS
-                    </span>
-                    <span v-else class="gate-badge gate-fail">
-                      ✕ FAIL
-                    </span>
+                  </td>
+                  <td class="actual-value">{{ formatMetricValue(metric) }}</td>
+                  <td>
+                    <span
+                      :class="[
+                        'badge',
+                        'gate-' + gateStatus(metric),
+                        gateStatus(metric) === 'pass'
+                          ? 'success'
+                          : gateStatus(metric) === 'fail'
+                            ? 'error'
+                            : '',
+                      ]"
+                      >{{
+                        gateStatus(metric) === 'pass'
+                          ? '达到门槛'
+                          : gateStatus(metric) === 'fail'
+                            ? '未达门槛'
+                            : '未判定'
+                      }}</span
+                    >
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </div>
-
-        <div v-else-if="!evalStore.loading" class="card placeholder-card">
-          <p>Select an evaluation run from the left panel to inspect quality gates and metrics.</p>
+          <div v-else class="empty-state compact">本次运行没有指标记录。</div>
+          <div class="eval-footnote">
+            需要对照基线的指标显示“未判定”；本页不自动晋升候选结果。
+          </div>
+        </template>
+        <div v-else class="empty-state eval-placeholder">
+          <UiIcon name="chart" :size="36" />
+          <h2 id="eval-detail-heading">用证据理解表现</h2>
+          <p>
+            选择一次运行，查看模型、版本信息与观测指标。当前页面仅展示数据库中已登记的记录。
+          </p>
         </div>
       </section>
-    </main>
-  </div>
+    </div>
+  </AppShell>
 </template>
-
 <style scoped>
-.eval-dashboard-layout {
-  min-height: 100vh;
-  background-color: #f7fafc;
-  display: flex;
-  flex-direction: column;
-}
-
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #1a365d;
-  color: white;
-  padding: 0.75rem 1.5rem;
-}
-
-.brand-group {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.brand-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-.sub-title {
-  font-size: 0.875rem;
-  color: #90cdf4;
-}
-
-.content-container {
-  max-width: 1200px;
-  width: 100%;
-  margin: 1.5rem auto;
-  padding: 0 1rem;
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 1.5rem;
-}
-
-.card {
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.runs-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.runs-header h3 {
-  margin: 0;
-  color: #2d3748;
-}
-
-.run-count {
-  font-size: 0.75rem;
-  background: #edf2f7;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  color: #4a5568;
-}
-
-.run-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.run-item {
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  cursor: pointer;
-  background: #ffffff;
-  transition: all 0.2s ease;
-}
-
-.run-item:hover {
-  background: #f8fafc;
-  border-color: #cbd5e0;
-}
-
-.run-item.active {
-  border-color: #3182ce;
-  background: #ebf8ff;
-}
-
-.run-item-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.25rem;
-}
-
-.mode-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
-}
-
-.mode-offline {
-  background: #e2e8f0;
-  color: #4a5568;
-}
-
-.mode-live {
-  background: #c6f6d5;
-  color: #22543d;
-}
-
-.run-date {
-  font-size: 0.75rem;
-  color: #718096;
-}
-
-.run-id-text {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #2b6cb0;
-  margin-bottom: 0.25rem;
-}
-
-.run-meta-sub {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: #718096;
-}
-
-.detail-header {
-  display: flex;
-  justify-content: space-between;
+.eval-status {
+  margin-bottom: 26px;
   align-items: flex-start;
-  margin-bottom: 1.25rem;
 }
-
-.title-with-badge {
+.eval-status > .badge {
+  margin-left: auto;
+}
+.eval-empty-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 10px;
+}
+.run-id {
+  color: #3b4e6c;
+  margin: 10px 0;
+}
+.eval-provenance {
+  margin-top: 24px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.eval-provenance summary {
+  color: #526d96;
+}
+.eval-provenance dl {
+  margin: 12px 0 0;
+}
+.eval-provenance dt {
+  margin-top: 10px;
+}
+.eval-provenance dd {
+  margin: 4px 0 0;
+}
+.methodology {
+  margin-top: 24px;
+}
+.fake-warning {
+  color: var(--warning);
+  font-weight: 550;
+}
+.metrics-heading {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 24px 16px;
 }
-
-.title-with-badge h2 {
-  margin: 0;
-  color: #2d3748;
+.metrics-heading span {
+  color: var(--muted);
+  font-size: 10px;
 }
-
-.run-uuid {
-  margin: 0.25rem 0 0 0;
-  font-size: 0.85rem;
-  color: #718096;
-}
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  background: #f8fafc;
-  padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid #edf2f7;
-  margin-bottom: 1.25rem;
-}
-
-.meta-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.meta-label {
-  font-size: 0.75rem;
-  color: #718096;
-  text-transform: uppercase;
-  font-weight: 600;
-}
-
-.meta-value {
-  font-size: 0.9rem;
-  color: #2d3748;
-}
-
-.rigor-notice-box {
-  display: flex;
-  gap: 0.75rem;
-  background: #fffaf0;
-  border: 1px solid #feebc8;
-  padding: 0.85rem 1rem;
-  border-radius: 6px;
-  margin-bottom: 1.25rem;
-}
-
-.rigor-icon {
-  font-size: 1.25rem;
-}
-
-.rigor-content {
-  font-size: 0.85rem;
-  color: #744210;
-}
-
-.rigor-content p {
-  margin: 0.25rem 0 0 0;
-  line-height: 1.4;
-}
-
-.fake-warning {
-  display: block;
-  margin-top: 0.25rem;
-  color: #c53030;
-  font-weight: 600;
-}
-
-.metrics-section h3 {
-  font-size: 1rem;
-  margin: 0 0 0.75rem 0;
-  color: #2d3748;
-}
-
 .metrics-table {
-  width: 100%;
-  border-collapse: collapse;
+  min-width: 600px;
 }
-
-.metrics-table th,
-.metrics-table td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid #edf2f7;
-}
-
-.metrics-table th {
-  background: #f8fafc;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  color: #718096;
-}
-
 .metric-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #2d3748;
+  display: block;
+  font-size: 11px;
+  font-weight: 550;
 }
-
-.threshold-badge {
-  background: #edf2f7;
-  color: #4a5568;
-  font-size: 0.8rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+.metric-key {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 5px;
 }
-
+.threshold-label {
+  color: var(--muted);
+  font-size: 10px;
+}
 .actual-value {
-  font-size: 0.95rem;
-  color: #1a202c;
-}
-
-.gate-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-}
-
-.gate-pass {
-  background: #c6f6d5;
-  color: #22543d;
-}
-
-.gate-fail {
-  background: #fed7d7;
-  color: #742a2a;
-}
-
-.high-risk-row {
-  background: #fff5f5;
-}
-
-.monospace {
-  font-family: monospace;
-}
-
-.font-bold {
+  font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
 }
-
-.btn-secondary {
-  background: #2b6cb0;
-  color: white;
-  border: none;
-  padding: 0.4rem 0.85rem;
-  border-radius: 4px;
-  cursor: pointer;
+.high-risk-row {
+  background: #fcfaf7;
 }
-
-.btn-secondary:hover {
-  background: #2c5282;
+.eval-footnote {
+  padding: 15px 24px;
+  color: var(--muted);
+  font-size: 10px;
+  background: #fafbfc;
+  border-top: 1px solid var(--line);
 }
-
-.error-banner {
-  background: #fff5f5;
-  color: #c53030;
-  border: 1px solid #feb2b2;
-  padding: 0.75rem;
-  border-radius: 6px;
-  margin-bottom: 1rem;
+.eval-placeholder {
+  min-height: 430px;
 }
-
-.placeholder-card, .loading-state, .empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: #718096;
+@media (max-width: 650px) {
+  .eval-status > .badge {
+    display: none;
+  }
 }
 </style>

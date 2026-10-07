@@ -32,7 +32,7 @@ from backend.integrations.tool_adapters import (
     SqlTicketService,
     SqlUserRepository,
 )
-from tests.fakes.tools import RecordingKnowledgeStore, knowledge_result
+from tests.support.fakes.tools import RecordingKnowledgeStore, knowledge_result
 from tools.schemas import (
     CreateTicketArgs,
     CreateTicketResult,

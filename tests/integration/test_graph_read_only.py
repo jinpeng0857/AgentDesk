@@ -21,8 +21,8 @@ from backend.graph.builder import build_ticket_graph
 from backend.graph.context import GraphContext
 from backend.graph.state import initial_ticket_state
 from backend.integrations.prompt_loader import load_all_prompts
-from tests.fakes.model_client import FakeModelClient
-from tests.fakes.tools import (
+from tests.support.fakes.model_client import FakeModelClient
+from tests.support.fakes.tools import (
     DisabledAccessRequestService,
     DisabledCredentialService,
     DisabledRefundService,
@@ -93,13 +93,21 @@ async def test_read_only_graph_case_a_vpn_resolution() -> None:
                 reason_code=RoutingReason.NEEDS_KNOWLEDGE,
             ),
             # 2. Knowledge grounds answer with reference
-            KnowledgeAgentOutput(
-                answer="Please follow the VPN restart procedure in the guide.",
-                knowledge_refs=[sample_ref],
-                fallback=False,
-            ),
-            # 3. Supervisor finalizes response
-            FinalResponse(
+                KnowledgeAgentOutput(
+                    answer="Please follow the VPN restart procedure in the guide.",
+                    knowledge_refs=[sample_ref],
+                    fallback=False,
+                ),
+                # 3. Supervisor chooses finalization after reviewing Knowledge output
+                RoutingDecision(
+                    intent=Intent.NETWORK,
+                    next_agent="finalize",
+                    confidence=0.95,
+                    escalate=False,
+                    reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+                ),
+                # 4. Supervisor finalizes response
+                FinalResponse(
                 kind="final",
                 resolution_mode=ResolutionMode.AUTOMATED,
                 final_response="Here is the VPN recovery SOP: restart the AnyConnect agent.",

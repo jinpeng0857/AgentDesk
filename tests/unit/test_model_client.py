@@ -17,9 +17,9 @@ from backend.integrations.model_client import (
     ModelTransportError,
     OpenAICompatibleModelClient,
 )
-from tests.fakes.model_client import FakeModelClient
+from tests.support.fakes.model_client import FakeModelClient
 
-CONFIG = ModelCallConfig(model="test-model", prompt_version="1.0.0")
+CONFIG = ModelCallConfig(model="test-model", think=False, prompt_version="1.0.0")
 MESSAGES = [ModelMessage(role="user", content="VPN 无法连接")]
 
 ROUTING_PAYLOAD = {
@@ -159,6 +159,8 @@ async def test_adapter_sends_server_side_json_schema() -> None:
     assert json_schema["strict"] is True
     assert "intent" in json.dumps(json_schema["schema"])
     assert body["model"] == "test-model"
+    assert body["seed"] == CONFIG.seed
+    assert body["think"] is False
 
 
 async def test_adapter_parses_structured_content() -> None:

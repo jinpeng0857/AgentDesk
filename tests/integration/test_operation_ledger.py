@@ -24,7 +24,7 @@ from backend.db.repositories.operations import OperationRepository
 from backend.governance.audit import SqlAuditSink
 from backend.governance.executor import ToolAdapters, WriteToolExecutor
 from backend.governance.idempotency import derive_idempotency_key
-from tests.fakes.tools import (
+from tests.support.fakes.tools import (
     RecordingKnowledgeStore,
     RecordingOrderRepository,
     RecordingServiceRepository,

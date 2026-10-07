@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas import (
     ActionProposal,
+    FinalResponse,
     Intent,
+    ResolutionMode,
     RoutingDecision,
     RoutingReason,
     TicketStatus,
@@ -23,11 +25,12 @@ from backend.db.models import OrderRecord, RefundRecord, TicketRecord
 from backend.db.repositories.approvals import ApprovalRepository
 from backend.db.repositories.tickets import TicketRepository
 from backend.graph.builder import build_ticket_graph
+from backend.graph.checkpointing import create_postgres_checkpointer
 from backend.graph.context import GraphContext
 from backend.integrations.prompt_loader import load_all_prompts
 from backend.jobs.tickets import GraphTicketRunner
-from tests.fakes.model_client import FakeModelClient
 from tests.integration.conftest import APPROVER_ID, REQUESTER_ID, to_psycopg_url
+from tests.support.fakes.model_client import FakeModelClient
 from tools.schemas import ProcessRefundArgs
 
 
@@ -57,7 +60,7 @@ async def checkpointer_pool(migrated_database: str) -> AsyncConnectionPool:
         open=False,
     )
     await pool.open()
-    checkpointer = AsyncPostgresSaver(pool)
+    checkpointer = create_postgres_checkpointer(pool)
     await checkpointer.setup()
     try:
         yield pool
@@ -67,7 +70,7 @@ async def checkpointer_pool(migrated_database: str) -> AsyncConnectionPool:
 
 @pytest.fixture
 async def checkpointer(checkpointer_pool: AsyncConnectionPool) -> AsyncPostgresSaver:
-    return AsyncPostgresSaver(checkpointer_pool)
+    return create_postgres_checkpointer(checkpointer_pool)
 
 
 async def test_high_risk_refund_interrupts_at_waiting_approval(
@@ -120,6 +123,17 @@ async def test_high_risk_refund_interrupts_at_waiting_approval(
                     order_version=1,
                 ),
                 evidence_result_ids=[],
+            ),
+            RoutingDecision(
+                intent=Intent.HIGH_RISK,
+                next_agent="finalize",
+                confidence=0.95,
+                escalate=False,
+                reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+            ),
+            FinalResponse(
+                resolution_mode=ResolutionMode.AUTOMATED,
+                final_response="The refund completed successfully.",
             ),
         ]
     )
@@ -209,7 +223,7 @@ async def test_approve_resume_executes_write_tool_and_resolves(
                 escalate=False,
                 reason_code=RoutingReason.NEEDS_ACTION,
             ),
-            ActionProposal(
+                ActionProposal(
                 tool_name="process_refund",
                 arguments=ProcessRefundArgs(
                     requester_id=REQUESTER_ID,
@@ -218,8 +232,19 @@ async def test_approve_resume_executes_write_tool_and_resolves(
                     currency="USD",
                     order_version=1,
                 ),
-                evidence_result_ids=[],
-            ),
+                    evidence_result_ids=[],
+                ),
+                RoutingDecision(
+                    intent=Intent.HIGH_RISK,
+                    next_agent="finalize",
+                    confidence=0.95,
+                    escalate=False,
+                    reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+                ),
+                FinalResponse(
+                    resolution_mode=ResolutionMode.AUTOMATED,
+                    final_response="The refund completed successfully.",
+                ),
         ]
     )
 
@@ -319,7 +344,7 @@ async def test_reject_resume_transitions_to_rejected_terminal(
                 escalate=False,
                 reason_code=RoutingReason.NEEDS_ACTION,
             ),
-            ActionProposal(
+                ActionProposal(
                 tool_name="process_refund",
                 arguments=ProcessRefundArgs(
                     requester_id=REQUESTER_ID,
@@ -328,8 +353,19 @@ async def test_reject_resume_transitions_to_rejected_terminal(
                     currency="USD",
                     order_version=1,
                 ),
-                evidence_result_ids=[],
-            ),
+                    evidence_result_ids=[],
+                ),
+                RoutingDecision(
+                    intent=Intent.HIGH_RISK,
+                    next_agent="finalize",
+                    confidence=0.95,
+                    escalate=False,
+                    reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+                ),
+                FinalResponse(
+                    resolution_mode=ResolutionMode.AUTOMATED,
+                    final_response="The refund completed successfully.",
+                ),
         ]
     )
 

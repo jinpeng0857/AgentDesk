@@ -45,5 +45,13 @@ Thumbs.db
 
 # ---- 评估产物 ----
 # 正式 artifact 由显式 git add 提交；本地临时运行不入库。
-eval/artifacts/*.local.json
-eval/artifacts/scratch/
+artifacts/evaluation/candidates/*.local.json
+src/eval/artifacts/*.local.json
+
+# ---- 浏览器验证临时日志 ----
+.playwright-cli/
+
+# ---- 演示视频只提交正式成片与说明 ----
+artifacts/demo-video/*
+!artifacts/demo-video/README.md
+!artifacts/demo-video/AgentDesk-2026-10-05-demo.mp4

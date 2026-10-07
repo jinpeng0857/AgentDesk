@@ -142,7 +142,7 @@ describe('TraceViewerView', () => {
     expect(wrapper.text()).toContain('failed')
 
     // Verify Redaction notice and masked value
-    expect(wrapper.text()).toContain('Zero Secret Leakage')
+    expect(wrapper.text()).toContain('脱敏审计摘要')
     expect(wrapper.text()).toContain('temp_password: ***')
     expect(wrapper.text()).not.toContain('plaintext_password_1234')
   })
@@ -169,6 +169,6 @@ describe('TraceViewerView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Ticket not found')
-    expect(wrapper.text()).toContain('No trace events recorded')
+    expect(wrapper.text()).toContain('暂无匹配的轨迹事件')
   })
 })

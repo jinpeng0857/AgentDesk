@@ -3,860 +3,475 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useApprovalsStore } from '../stores/approvals'
-
+import type { ApprovalStatus } from '../api/types'
+import AppShell from '../components/AppShell.vue'
+import UiIcon from '../components/UiIcon.vue'
+import {
+  approvalLabels,
+  riskLabels,
+  toolLabels,
+  policyReasonLabels,
+  formatDate,
+} from './presentation'
 const router = useRouter()
 const authStore = useAuthStore()
 const approvalsStore = useApprovalsStore()
-
 const decisionReason = ref('')
-const activeFilter = ref<string>('pending')
-
+const activeFilter = ref<ApprovalStatus | 'all'>('pending')
+const filters: { key: ApprovalStatus | 'all'; label: string }[] = [
+  { key: 'pending', label: '待审批' },
+  { key: 'approved', label: '已通过' },
+  { key: 'rejected', label: '已拒绝' },
+  { key: 'expired', label: '已过期' },
+  { key: 'all', label: '全部' },
+]
 onMounted(async () => {
   approvalsStore.setApiClient(authStore.apiClient)
   await authStore.fetchMe()
-  try {
-    await approvalsStore.fetchApprovals('pending')
-    if (approvalsStore.approvals.length > 0) {
-      const firstId = approvalsStore.approvals[0]?.approval_id
-      if (firstId) {
-        await selectApproval(firstId)
-      }
-    }
-  } catch {
-    // Ignore initial fetch error
-  }
+  await handleFilter('pending')
 })
-
-async function selectApproval(approvalId: string): Promise<void> {
+async function selectApproval(id: string): Promise<void> {
   approvalsStore.actionError = null
   decisionReason.value = ''
+  approvalsStore.currentApproval = null
   try {
-    await approvalsStore.fetchApproval(approvalId)
+    await approvalsStore.fetchApproval(id)
   } catch {
-    // Handled in store
+    /* Store exposes the API error. */
   }
 }
-
-async function handleFilter(status: string): Promise<void> {
+async function handleFilter(status: ApprovalStatus | 'all'): Promise<void> {
   activeFilter.value = status
   approvalsStore.actionError = null
+  approvalsStore.currentApproval = null
   try {
-    const statusParam = status === 'all' ? undefined : status
-    await approvalsStore.fetchApprovals(statusParam)
-    if (approvalsStore.approvals.length > 0) {
-      const firstId = approvalsStore.approvals[0]?.approval_id
-      if (firstId) {
-        await selectApproval(firstId)
-      }
-    } else {
-      approvalsStore.currentApproval = null
-    }
+    await approvalsStore.fetchApprovals(status === 'all' ? undefined : status)
+    const first = approvalsStore.approvals[0]
+    if (first) await selectApproval(first.approval_id)
   } catch {
-    // Handled in store
+    /* Store exposes the API error. */
   }
 }
-
 async function handleDecision(decision: 'approve' | 'reject'): Promise<void> {
-  if (!approvalsStore.currentApproval) return
+  const approval = approvalsStore.currentApproval
+  if (!approval || approvalsStore.loading || approval.status !== 'pending')
+    return
   try {
     await approvalsStore.decide(
-      approvalsStore.currentApproval.approval_id,
+      approval.approval_id,
       decision,
-      approvalsStore.currentApproval.version,
+      approval.version,
       decisionReason.value,
     )
     decisionReason.value = ''
   } catch {
-    // Handled in store with actionError
+    /* Store exposes the typed action error. */
   }
 }
-
-function handleLogout(): void {
-  authStore.logout()
-  router.push('/login')
-}
-
-function goToTickets(): void {
-  router.push('/tickets')
-}
 </script>
-
 <template>
-  <div class="approvals-layout">
-    <header class="navbar">
-      <div class="brand-group">
-        <span class="brand">AgentDesk</span>
-        <span class="sub-brand">HITL Approval Center</span>
+  <AppShell
+    active="approvals"
+    title="人工审批"
+    subtitle="自动化在这里暂停，由你决定是否继续执行。"
+    eyebrow="HUMAN IN THE LOOP"
+  >
+    <template #actions
+      ><button
+        class="button"
+        :disabled="approvalsStore.loading"
+        @click="handleFilter(activeFilter)"
+      >
+        <UiIcon name="refresh" :size="16" />刷新
+      </button></template
+    >
+    <div class="approval-principle">
+      <UiIcon name="shield" :size="21" />
+      <div>
+        <strong>先确认操作，再允许执行</strong>
+        <p>高风险操作在审批前保持暂停。通过或拒绝将绑定当前操作和固定参数。</p>
       </div>
-      <div class="nav-links">
-        <button class="nav-btn" @click="goToTickets">Tickets</button>
-        <button class="nav-btn active">Approvals</button>
-      </div>
-      <div class="user-info">
-        <span v-if="authStore.user" class="username">
-          {{ authStore.user.user_id }} ({{ authStore.user.role }})
-        </span>
-        <button class="btn-secondary" @click="handleLogout">Log Out</button>
-      </div>
-    </header>
-
-    <main class="content-container">
-      <!-- Left Sidebar: Filter Tabs & Approvals List -->
-      <section class="sidebar">
-        <div class="card filter-card">
-          <div class="filter-tabs">
-            <button
-              :class="['tab-btn', { active: activeFilter === 'pending' }]"
-              @click="handleFilter('pending')"
-            >
-              Pending
-            </button>
-            <button
-              :class="['tab-btn', { active: activeFilter === 'approved' }]"
-              @click="handleFilter('approved')"
-            >
-              Approved
-            </button>
-            <button
-              :class="['tab-btn', { active: activeFilter === 'rejected' }]"
-              @click="handleFilter('rejected')"
-            >
-              Rejected
-            </button>
-            <button
-              :class="['tab-btn', { active: activeFilter === 'expired' }]"
-              @click="handleFilter('expired')"
-            >
-              Expired
-            </button>
-            <button
-              :class="['tab-btn', { active: activeFilter === 'all' }]"
-              @click="handleFilter('all')"
-            >
-              All
-            </button>
-          </div>
+      <span class="badge warning">参数不可编辑</span>
+    </div>
+    <div v-if="approvalsStore.error" class="error-banner" role="alert">
+      {{ approvalsStore.error }}
+    </div>
+    <div class="split-workspace">
+      <section class="panel" aria-labelledby="approval-list-heading">
+        <div class="panel-heading">
+          <h3 id="approval-list-heading">审批队列</h3>
+          <span class="mono muted">{{ approvalsStore.approvals.length }}</span>
         </div>
-
-        <div class="card list-card">
-          <h3>Approvals ({{ approvalsStore.approvals.length }})</h3>
-          <div v-if="approvalsStore.loading && approvalsStore.approvals.length === 0" class="empty-state">
-            Loading approvals...
-          </div>
-          <div v-else-if="approvalsStore.approvals.length === 0" class="empty-state">
-            No approvals found for filter "{{ activeFilter }}".
-          </div>
-          <div v-else class="approval-items">
-            <div
-              v-for="item in approvalsStore.approvals"
-              :key="item.approval_id"
-              :class="[
-                'approval-item',
-                { selected: approvalsStore.currentApproval?.approval_id === item.approval_id },
-              ]"
-              @click="selectApproval(item.approval_id)"
-            >
-              <div class="item-header">
-                <span class="tool-name">{{ item.tool_name }}</span>
-                <span :class="['badge', `badge-${item.status}`]">{{ item.status }}</span>
-              </div>
-              <div class="item-meta">
-                <span :class="['risk-badge', `risk-${item.risk_level}`]">
-                  {{ item.risk_level }} risk
-                </span>
-                <span class="item-time">
-                  {{ new Date(item.created_at).toLocaleTimeString() }}
-                </span>
-              </div>
-            </div>
-          </div>
+        <div class="approval-filters tabs" aria-label="筛选审批">
+          <button
+            v-for="tab in filters"
+            :key="tab.key"
+            :class="['tab', { active: activeFilter === tab.key }]"
+            :aria-pressed="activeFilter === tab.key"
+            :disabled="approvalsStore.loading"
+            @click="handleFilter(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
         </div>
+        <div
+          v-if="!approvalsStore.approvals.length"
+          class="empty-state compact"
+        >
+          <UiIcon name="shield" :size="28" />
+          <p>
+            {{
+              approvalsStore.loading
+                ? '正在加载审批…'
+                : '当前筛选下没有审批请求。'
+            }}
+          </p>
+        </div>
+        <button
+          v-for="item in approvalsStore.approvals"
+          :key="item.approval_id"
+          :class="[
+            'list-row',
+            {
+              selected:
+                approvalsStore.currentApproval?.approval_id ===
+                item.approval_id,
+            },
+          ]"
+          :aria-pressed="
+            approvalsStore.currentApproval?.approval_id === item.approval_id
+          "
+          :disabled="approvalsStore.loading"
+          @click="selectApproval(item.approval_id)"
+        >
+          <div class="row-top">
+            <span class="row-title">{{
+              toolLabels[item.tool_name] || item.tool_name
+            }}</span
+            ><span :class="['badge', item.status]">{{
+              approvalLabels[item.status]
+            }}</span>
+          </div>
+          <div class="row-meta">
+            <span :class="['badge', item.risk_level]">{{
+              riskLabels[item.risk_level]
+            }}</span
+            ><time :datetime="item.created_at">{{
+              formatDate(item.created_at)
+            }}</time>
+          </div>
+          <div class="row-meta approval-row-id mono">
+            #{{ item.approval_id.slice(0, 8) }}
+          </div>
+        </button>
       </section>
-
-      <!-- Right Column: Approval Detail & Decision Action -->
-      <section class="main-detail">
-        <div v-if="approvalsStore.currentApproval" class="card detail-card">
-          <!-- Action Error Banner (e.g. 409 conflict, expired) -->
-          <div v-if="approvalsStore.actionError" class="error-banner" data-testid="action-error">
-            <strong>{{ approvalsStore.actionError.code }}:</strong>
-            {{ approvalsStore.actionError.message }}
-          </div>
-
-          <div class="detail-header">
+      <section
+        class="panel"
+        aria-labelledby="approval-detail-heading"
+        :aria-busy="approvalsStore.loading"
+      >
+        <template v-if="approvalsStore.currentApproval">
+          <div class="panel-heading">
             <div>
-              <h2>Approval Request</h2>
-              <div class="detail-subtitle">
-                Operation: <code>{{ approvalsStore.currentApproval.operation_id }}</code>
+              <span class="eyebrow">OPERATION REVIEW</span>
+              <h2 id="approval-detail-heading">
+                {{
+                  toolLabels[approvalsStore.currentApproval.tool_name] ||
+                  approvalsStore.currentApproval.tool_name
+                }}
+              </h2>
+              <p class="mono">{{ approvalsStore.currentApproval.tool_name }}</p>
+            </div>
+            <span
+              :class="['badge', approvalsStore.currentApproval.risk_level]"
+              >{{ riskLabels[approvalsStore.currentApproval.risk_level] }}</span
+            >
+          </div>
+          <div class="panel-body">
+            <div
+              v-if="approvalsStore.actionError"
+              class="error-banner"
+              data-testid="action-error"
+              role="alert"
+            >
+              <strong>{{ approvalsStore.actionError.code }}:</strong>
+              {{ approvalsStore.actionError.message }}
+              <p>请刷新审批记录，确认最新状态后再操作。</p>
+            </div>
+            <dl class="metadata">
+              <div>
+                <dt>审批状态</dt>
+                <dd>
+                  <span
+                    :class="['badge', approvalsStore.currentApproval.status]"
+                    >{{
+                      approvalLabels[approvalsStore.currentApproval.status]
+                    }}</span
+                  >
+                </dd>
+              </div>
+              <div>
+                <dt>有效期截至</dt>
+                <dd>
+                  {{ formatDate(approvalsStore.currentApproval.expires_at) }}
+                </dd>
+              </div>
+              <div>
+                <dt>记录版本</dt>
+                <dd>v{{ approvalsStore.currentApproval.version }}</dd>
+              </div>
+            </dl>
+            <hr class="divider" />
+            <div class="section-heading"><h3>审批原因</h3></div>
+            <p class="reason-code">
+              {{
+                policyReasonLabels[
+                  approvalsStore.currentApproval.reason_code
+                ] ||
+                '该操作需要人工确认。请核对下方参数，并作出通过或拒绝的决定。'
+              }}
+            </p>
+            <hr class="divider" />
+            <div class="section-heading">
+              <h3>待执行参数</h3>
+              <span class="badge"><UiIcon name="lock" :size="12" />已固定</span>
+            </div>
+            <p class="params-hint">
+              请核对订单、金额或目标账户。这些参数在本次审批中不可修改。
+            </p>
+            <div class="table-scroll">
+              <table class="args-table">
+                <thead>
+                  <tr>
+                    <th scope="col">参数</th>
+                    <th scope="col">内容</th>
+                    <th scope="col">显示状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="arg in approvalsStore.currentApproval.args_summary"
+                    :key="arg.name"
+                  >
+                    <td class="mono">{{ arg.name }}</td>
+                    <td class="mono">{{ arg.value }}</td>
+                    <td>
+                      <span
+                        :class="[
+                          'badge',
+                          arg.value === '***'
+                            ? 'badge-sensitive'
+                            : 'badge-plain',
+                        ]"
+                        >{{ arg.value === '***' ? '已脱敏' : '可见' }}</span
+                      >
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <details class="technical-detail">
+              <summary>操作绑定与追溯信息</summary>
+              <dl>
+                <dt>审批 ID</dt>
+                <dd class="mono">
+                  {{ approvalsStore.currentApproval.approval_id }}
+                </dd>
+                <dt>工单 ID</dt>
+                <dd class="mono">
+                  {{ approvalsStore.currentApproval.ticket_id }}
+                </dd>
+                <dt>操作 ID</dt>
+                <dd class="mono">
+                  {{ approvalsStore.currentApproval.operation_id }}
+                </dd>
+                <dt>判定代码</dt>
+                <dd class="mono">
+                  {{ approvalsStore.currentApproval.reason_code }}
+                </dd>
+                <dt>参数摘要 SHA-256</dt>
+                <dd class="mono">
+                  {{ approvalsStore.currentApproval.args_hash }}
+                </dd>
+              </dl>
+            </details>
+            <hr class="divider" />
+            <div
+              v-if="
+                ['approved', 'rejected'].includes(
+                  approvalsStore.currentApproval.status,
+                )
+              "
+              class="notice neutral"
+              role="status"
+            >
+              <UiIcon name="check" :size="19" />
+              <div>
+                <strong>审批决定已记录</strong>
+                <p>
+                  {{
+                    approvalsStore.currentApproval.status === 'approved'
+                      ? '已通过，系统将继续处理原工单。'
+                      : '已拒绝，本次操作不会执行。'
+                  }}记录版本 v{{ approvalsStore.currentApproval.version }}。
+                </p>
               </div>
             </div>
-            <div class="badges-row">
-              <span :class="['badge', `badge-${approvalsStore.currentApproval.status}`]">
-                {{ approvalsStore.currentApproval.status }}
-              </span>
-              <span :class="['risk-badge', `risk-${approvalsStore.currentApproval.risk_level}`]">
-                {{ approvalsStore.currentApproval.risk_level }} Risk
-              </span>
+            <div
+              v-else-if="approvalsStore.currentApproval.status === 'expired'"
+              class="notice warning"
+            >
+              <UiIcon name="lock" :size="19" />
+              <div>
+                <strong>审批已过期</strong>
+                <p>已超过审批有效期，无法再通过或拒绝，也不能恢复执行。</p>
+              </div>
             </div>
-          </div>
-
-          <!-- Metadata Grid -->
-          <div class="meta-grid">
-            <div class="meta-item">
-              <span class="meta-label">Approval ID:</span>
-              <span class="meta-value monospace">{{ approvalsStore.currentApproval.approval_id }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Ticket ID:</span>
-              <span class="meta-value monospace">{{ approvalsStore.currentApproval.ticket_id }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Tool Name:</span>
-              <span class="meta-value font-bold">{{ approvalsStore.currentApproval.tool_name }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Version:</span>
-              <span class="meta-value">{{ approvalsStore.currentApproval.version }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Reason Code:</span>
-              <span class="meta-value">{{ approvalsStore.currentApproval.reason_code }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Expires At:</span>
-              <span class="meta-value">
-                {{ new Date(approvalsStore.currentApproval.expires_at).toLocaleString() }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Immutable Parameters Section -->
-          <div class="section-box params-section">
-            <div class="section-header">
-              <h3>Frozen Execution Arguments</h3>
-              <span class="immutable-notice">
-                Cryptographically bound to args_hash; parameters cannot be edited.
-              </span>
-            </div>
-
-            <div class="hash-row">
-              <span class="meta-label">Args Hash (SHA-256):</span>
-              <code class="args-hash">{{ approvalsStore.currentApproval.args_hash }}</code>
-            </div>
-
-            <table class="args-table">
-              <thead>
-                <tr>
-                  <th>Parameter</th>
-                  <th>Value</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="arg in approvalsStore.currentApproval.args_summary"
-                  :key="arg.name"
-                >
-                  <td class="param-name monospace">{{ arg.name }}</td>
-                  <td class="param-value monospace">
-                    <span v-if="arg.value === '***'" class="masked-value">{{ arg.value }}</span>
-                    <span v-else>{{ arg.value }}</span>
-                  </td>
-                  <td>
-                    <span v-if="arg.value === '***'" class="badge badge-sensitive">sensitive</span>
-                    <span v-else class="badge badge-plain">visible</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Decision / Resolution Info if already decided -->
-          <div
-            v-if="approvalsStore.currentApproval.status === 'approved' || approvalsStore.currentApproval.status === 'rejected'"
-            :class="['section-box', 'decision-result-box', `result-${approvalsStore.currentApproval.status}`]"
-          >
-            <h3>Decision Recorded</h3>
-            <div class="decision-meta">
-              <p>
-                <strong>Status:</strong>
-                <span :class="['badge', `badge-${approvalsStore.currentApproval.status}`]">
-                  {{ approvalsStore.currentApproval.status }}
-                </span>
-              </p>
-              <p>
-                <strong>Version:</strong> {{ approvalsStore.currentApproval.version }}
-              </p>
-            </div>
-          </div>
-
-          <!-- Expired Notice -->
-          <div
-            v-else-if="approvalsStore.currentApproval.status === 'expired'"
-            class="section-box decision-result-box result-expired"
-          >
-            <h3>Approval Expired</h3>
-            <p>This approval request has exceeded its TTL and cannot be decided.</p>
-          </div>
-
-          <!-- Decision Action Form for Pending -->
-          <div
-            v-else-if="approvalsStore.currentApproval.status === 'pending'"
-            class="section-box action-section"
-          >
-            <h3>Make Decision</h3>
-            <div class="form-group">
-              <label for="reason-input">Decision Reason / Notes (Optional):</label>
-              <textarea
+            <div
+              v-else-if="approvalsStore.currentApproval.status === 'pending'"
+              class="decision-form"
+            >
+              <label for="reason-input"
+                >审批备注 <span class="muted">（可选）</span></label
+              ><textarea
                 id="reason-input"
                 v-model="decisionReason"
                 rows="2"
-                placeholder="Provide a rationale for approving or rejecting this high-risk action..."
+                maxlength="1000"
+                :disabled="approvalsStore.loading"
+                placeholder="记录通过或拒绝的理由，方便后续回查。"
               ></textarea>
-            </div>
-            <div class="actions-buttons">
-              <button
-                class="btn-approve"
-                data-testid="approve-button"
-                :disabled="approvalsStore.loading"
-                @click="handleDecision('approve')"
-              >
-                Approve &amp; Resume Ticket
-              </button>
-              <button
-                class="btn-reject"
-                data-testid="reject-button"
-                :disabled="approvalsStore.loading"
-                @click="handleDecision('reject')"
-              >
-                Reject Request
-              </button>
+              <div class="decision-actions">
+                <button
+                  class="button primary"
+                  data-testid="approve-button"
+                  :disabled="approvalsStore.loading"
+                  @click="handleDecision('approve')"
+                >
+                  <UiIcon name="check" :size="16" />通过并继续处理</button
+                ><button
+                  class="button danger"
+                  data-testid="reject-button"
+                  :disabled="approvalsStore.loading"
+                  @click="handleDecision('reject')"
+                >
+                  拒绝操作
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div v-else class="card detail-card placeholder-card">
-          <p>Select an approval from the list to view its frozen parameters and take action.</p>
+          <div class="approval-footer">
+            <button
+              class="text-button"
+              @click="
+                router.push({
+                  name: 'traces',
+                  params: {
+                    ticketId: approvalsStore.currentApproval.ticket_id,
+                  },
+                })
+              "
+            >
+              查看关联工单轨迹<UiIcon name="arrow" :size="15" />
+            </button>
+          </div>
+        </template>
+        <div v-else class="empty-state approval-placeholder">
+          <UiIcon name="shield" :size="35" />
+          <h2 id="approval-detail-heading">让高风险操作经过人的判断</h2>
+          <p>选择一条审批请求，核对固定参数后作出决定。</p>
         </div>
       </section>
-    </main>
-  </div>
+    </div>
+  </AppShell>
 </template>
-
 <style scoped>
-.approvals-layout {
-  min-height: 100vh;
-  background-color: #f7fafc;
+.approval-principle {
   display: flex;
-  flex-direction: column;
-}
-
-.navbar {
-  display: flex;
-  justify-content: space-between;
+  gap: 14px;
   align-items: center;
-  background-color: #2d3748;
-  color: white;
-  padding: 0.75rem 1.5rem;
+  margin-bottom: 26px;
+  padding: 20px 0 24px;
+  border-bottom: 1px solid var(--line);
 }
-
-.brand-group {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+.approval-principle > svg {
+  color: #576f94;
 }
-
-.brand {
-  font-weight: 700;
-  font-size: 1.125rem;
+.approval-principle strong {
+  font-size: 13px;
 }
-
-.sub-brand {
-  font-size: 0.875rem;
-  color: #a0aec0;
+.approval-principle p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
 }
-
-.nav-links {
-  display: flex;
-  gap: 0.5rem;
+.approval-principle > .badge {
+  margin-left: auto;
 }
-
-.nav-btn {
-  background: transparent;
-  color: #cbd5e0;
-  border: none;
-  padding: 0.375rem 0.75rem;
+.approval-filters {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  gap: 2px;
+}
+.approval-filters .tab {
+  padding-inline: 7px;
+}
+.approval-row-id {
+  margin-top: 9px;
+}
+.reason-code {
+  background: #f6f8fa;
   border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
+  padding: 10px 12px;
+  color: #57677c;
 }
-
-.nav-btn:hover {
-  background-color: #4a5568;
-  color: white;
+.params-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 16px;
 }
-
-.nav-btn.active {
-  background-color: #4a5568;
-  color: white;
-  font-weight: 600;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.username {
-  font-size: 0.875rem;
-  color: #e2e8f0;
-}
-
-.btn-secondary {
-  background-color: #4a5568;
-  color: white;
-  border: none;
-  padding: 0.375rem 0.75rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
-
-.btn-secondary:hover {
-  background-color: #718096;
-}
-
-.content-container {
-  display: flex;
-  flex: 1;
-  padding: 1.5rem;
-  gap: 1.5rem;
-  max-width: 1400px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.sidebar {
-  width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.main-detail {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.card {
-  background: white;
-  border-radius: 8px;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.filter-card {
-  padding: 0.75rem;
-}
-
-.filter-tabs {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.tab-btn {
-  flex: 1;
-  background: #edf2f7;
-  border: none;
-  padding: 0.375rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #4a5568;
-  cursor: pointer;
-  text-align: center;
-}
-
-.tab-btn:hover {
-  background: #e2e8f0;
-}
-
-.tab-btn.active {
-  background: #3182ce;
-  color: white;
-}
-
-.list-card {
-  flex: 1;
-  overflow-y: auto;
-  max-height: calc(100vh - 180px);
-}
-
-.list-card h3 {
-  margin-top: 0;
-  margin-bottom: 0.75rem;
-  font-size: 1rem;
-  color: #2d3748;
-}
-
-.empty-state {
-  color: #a0aec0;
-  font-size: 0.875rem;
-  text-align: center;
-  padding: 2rem 1rem;
-}
-
-.approval-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.approval-item {
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.approval-item:hover {
-  background-color: #f7fafc;
-  border-color: #cbd5e0;
-}
-
-.approval-item.selected {
-  border-color: #3182ce;
-  background-color: #ebf8ff;
-}
-
-.item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.375rem;
-}
-
-.tool-name {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #2d3748;
-}
-
-.item-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.item-time {
-  font-size: 0.75rem;
-  color: #a0aec0;
-}
-
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #edf2f7;
-}
-
-.detail-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: #1a202c;
-}
-
-.detail-subtitle {
-  font-size: 0.8125rem;
-  color: #718096;
-  margin-top: 0.25rem;
-}
-
-.badges-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.badge-pending {
-  background: #feebc8;
-  color: #c05621;
-}
-
-.badge-approved {
-  background: #c6f6d5;
-  color: #22543d;
-}
-
-.badge-rejected {
-  background: #fed7d7;
-  color: #9b2c2c;
-}
-
-.badge-expired {
-  background: #e2e8f0;
-  color: #4a5568;
-}
-
 .badge-sensitive {
-  background: #fed7d7;
-  color: #9b2c2c;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
-
-.badge-plain {
-  background: #edf2f7;
-  color: #4a5568;
+.technical-detail {
+  margin-top: 20px;
+  font-size: 11px;
+  color: var(--muted);
 }
-
-.risk-badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
+.technical-detail summary {
+  color: #526b90;
+  padding-block: 4px;
 }
-
-.risk-high {
-  background: #fed7d7;
-  color: #9b2c2c;
+.technical-detail dl {
+  margin: 12px 0 0;
 }
-
-.risk-medium {
-  background: #feebc8;
-  color: #c05621;
+.technical-detail dt {
+  margin-top: 10px;
 }
-
-.risk-low {
-  background: #c6f6d5;
-  color: #22543d;
+.technical-detail dd {
+  margin: 4px 0 0;
 }
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
-  background-color: #f7fafc;
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-}
-
-.meta-item {
+.decision-actions {
   display: flex;
-  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
-
-.meta-label {
-  font-size: 0.75rem;
-  color: #718096;
-  margin-bottom: 0.125rem;
+.approval-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--line);
 }
-
-.meta-value {
-  font-size: 0.875rem;
-  color: #2d3748;
+.approval-placeholder {
+  min-height: 430px;
 }
-
-.monospace {
-  font-family: monospace;
-}
-
-.font-bold {
-  font-weight: 600;
-}
-
-.section-box {
-  background: #f7fafc;
-  border: 1px solid #edf2f7;
-  border-radius: 6px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.5rem;
-}
-
-.section-box h3 {
-  margin: 0;
-  font-size: 0.9375rem;
-  color: #2d3748;
-}
-
-.immutable-notice {
-  font-size: 0.75rem;
-  color: #718096;
-}
-
-.hash-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  background: #edf2f7;
-  padding: 0.375rem 0.5rem;
-  border-radius: 4px;
-}
-
-.args-hash {
-  font-size: 0.75rem;
-  color: #2b6cb0;
-  word-break: break-all;
-}
-
-.args-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8125rem;
-}
-
-.args-table th,
-.args-table td {
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.args-table th {
-  background: #edf2f7;
-  color: #4a5568;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-}
-
-.param-value {
-  color: #2d3748;
-}
-
-.masked-value {
-  color: #e53e3e;
-  font-weight: bold;
-}
-
-.action-section {
-  background: #ebf8ff;
-  border-color: #bee3f8;
-}
-
-.form-group {
-  margin-top: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.form-group label {
-  display: block;
-  font-size: 0.8125rem;
-  color: #2d3748;
-  margin-bottom: 0.25rem;
-}
-
-.form-group textarea {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #cbd5e0;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-family: inherit;
-}
-
-.actions-buttons {
-  display: flex;
-  gap: 1rem;
-}
-
-.btn-approve {
-  background-color: #38a169;
-  color: white;
-  border: none;
-  padding: 0.625rem 1.25rem;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.btn-approve:hover:not(:disabled) {
-  background-color: #2f855a;
-}
-
-.btn-reject {
-  background-color: #e53e3e;
-  color: white;
-  border: none;
-  padding: 0.625rem 1.25rem;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.btn-reject:hover:not(:disabled) {
-  background-color: #c53030;
-}
-
-.btn-approve:disabled,
-.btn-reject:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.decision-result-box {
-  background: #edf2f7;
-}
-
-.result-approved {
-  background: #f0fff4;
-  border-color: #c6f6d5;
-}
-
-.result-rejected {
-  background: #fff5f5;
-  border-color: #fed7d7;
-}
-
-.result-expired {
-  background: #f7fafc;
-  border-color: #e2e8f0;
-}
-
-.decision-meta p {
-  margin: 0.375rem 0;
-  font-size: 0.875rem;
-  color: #2d3748;
-}
-
-.error-banner {
-  background-color: #fed7d7;
-  color: #9b2c2c;
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
-  margin-bottom: 1rem;
-  font-size: 0.875rem;
-  border: 1px solid #feb2b2;
-}
-
-.placeholder-card {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 300px;
-  color: #a0aec0;
+@media (max-width: 650px) {
+  .approval-principle {
+    padding-top: 0;
+    align-items: flex-start;
+  }
+  .approval-principle > .badge {
+    display: none;
+  }
 }
 </style>

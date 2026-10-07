@@ -15,8 +15,8 @@ from backend.db.repositories.outbox import OutboxRepository
 from backend.jobs.context import WorkerContext
 from backend.jobs.outbox import dispatch_outbox
 from backend.jobs.tickets import start_job_id
-from tests.fakes.runners import FailingRedis, RecordingTicketRunner
 from tests.integration.conftest import REQUESTER_ID, TEST_JWT_SECRET
+from tests.support.fakes.runners import FailingRedis, RecordingTicketRunner
 
 
 @pytest.fixture(autouse=True)

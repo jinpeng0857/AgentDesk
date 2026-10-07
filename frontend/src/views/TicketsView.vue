@@ -1,621 +1,683 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTicketStore } from '../stores/tickets'
+import AppShell from '../components/AppShell.vue'
+import UiIcon from '../components/UiIcon.vue'
+import {
+  statusLabels,
+  intentLabels,
+  riskLabels,
+  formatDate,
+} from './presentation'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const ticketStore = useTicketStore()
-
 const newQuery = ref('')
+const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const filter = ref<'all' | 'active' | 'resolved'>('all')
+const knowledgeRefs = computed(
+  () => ticketStore.currentTicket?.knowledge_refs || [],
+)
+const examples = [
+  { label: '网络咨询', query: 'VPN 连接失败，应该如何排查？' },
+  { label: '密码重置', query: '请帮我重置自己的账户密码。' },
+  {
+    label: '权限申请',
+    query: '我需要申请开发环境访问权限，用于排查项目问题。',
+  },
+]
+const counts = computed(() => ({
+  total: ticketStore.tickets.length,
+  running: ticketStore.tickets.filter(
+    (t) => t.status === 'queued' || t.status === 'running',
+  ).length,
+  waiting: ticketStore.tickets.filter((t) => t.status === 'waiting_approval')
+    .length,
+  resolved: ticketStore.tickets.filter((t) => t.status === 'resolved').length,
+}))
+const visibleTickets = computed(() =>
+  ticketStore.tickets.filter(
+    (t) =>
+      filter.value === 'all' ||
+      (filter.value === 'resolved'
+        ? t.status === 'resolved'
+        : ['queued', 'running', 'waiting_approval'].includes(t.status)),
+  ),
+)
+const resolutionLabels: Record<string, string> = {
+  automated: '自动处理',
+  fallback: '保守处理',
+  human_required: '需要人工',
+}
+const responseNotes = computed(() => {
+  const status = ticketStore.currentTicket?.status
+  if (status === 'waiting_approval')
+    return '操作已暂停，等待审批人作出决定。审批通过前不会执行高风险写操作。'
+  if (status === 'escalated')
+    return '自动流程已停止，需要人工接管。请查看执行轨迹了解原因。'
+  if (status === 'failed' || status === 'rejected' || status === 'expired')
+    return '当前流程已结束，请查看执行轨迹中的处理记录。'
+  return '处理完成后，答复将显示在这里。'
+})
 
 onMounted(async () => {
   ticketStore.setApiClient(authStore.apiClient)
   await authStore.fetchMe()
+  await refreshTickets()
+})
+onUnmounted(() => ticketStore.stopAllPolling())
+async function refreshTickets(): Promise<void> {
   try {
     await ticketStore.fetchTickets()
-    if (ticketStore.tickets.length > 0) {
-      const firstId = ticketStore.tickets[0]?.ticket_id
-      if (firstId) {
-        await selectTicket(firstId)
-      }
-    }
+    const ticketId =
+      ticketStore.currentTicket?.ticket_id || ticketStore.tickets[0]?.ticket_id
+    if (ticketId) await selectTicket(ticketId)
   } catch {
-    // Ignore fetch error on load
+    /* The store exposes the typed API error. */
   }
-})
-
-onUnmounted(() => {
-  ticketStore.stopAllPolling()
-})
-
+}
 async function selectTicket(ticketId: string): Promise<void> {
   try {
     await ticketStore.fetchTicket(ticketId)
     if (
-      ticketStore.currentTicket?.status === 'queued' ||
-      ticketStore.currentTicket?.status === 'running'
-    ) {
+      ticketStore.currentTicket &&
+      ['queued', 'running', 'waiting_approval'].includes(
+        ticketStore.currentTicket.status,
+      )
+    )
       ticketStore.startPolling(ticketId)
-    }
   } catch {
-    // Handled in store
+    /* The store exposes the typed API error. */
   }
 }
-
 async function handleCreateTicket(): Promise<void> {
   submitError.value = null
   const query = newQuery.value.trim()
   if (!query) {
-    submitError.value = 'Please enter a ticket description.'
+    submitError.value = '请先描述需要处理的问题。'
     return
   }
-
+  if (submitting.value) return
+  submitting.value = true
   try {
     const ticketId = await ticketStore.submitTicket(query)
     newQuery.value = ''
+    filter.value = 'all'
     await selectTicket(ticketId)
   } catch (err: unknown) {
-    submitError.value = err instanceof Error ? err.message : 'Failed to submit ticket'
+    submitError.value =
+      err instanceof Error ? err.message : '提交失败，请稍后重试。'
+  } finally {
+    submitting.value = false
   }
-}
-
-function handleLogout(): void {
-  authStore.logout()
-  router.push('/login')
-}
-
-function goToApprovals(): void {
-  router.push('/approvals')
 }
 </script>
 
 <template>
-  <div class="tickets-layout">
-    <header class="navbar">
-      <div class="brand-group">
-        <span class="brand">AgentDesk</span>
-        <span class="sub-brand">IT Service Desk</span>
+  <AppShell
+    active="tickets"
+    title="工单工作台"
+    subtitle="描述问题，跟进处理，查看每一次决策的依据。"
+    eyebrow="SERVICE OPERATIONS"
+  >
+    <template #actions
+      ><button
+        class="button"
+        :disabled="ticketStore.loading"
+        @click="refreshTickets"
+      >
+        <UiIcon name="refresh" :size="16" />刷新
+      </button></template
+    >
+    <div class="ticket-overview" aria-label="当前工单列表统计">
+      <div>
+        <span>我的工单</span><strong>{{ counts.total }}</strong>
       </div>
-      <div v-if="authStore.user?.role === 'approver'" class="nav-links">
-        <button class="nav-btn active">Tickets</button>
-        <button class="nav-btn" @click="goToApprovals">Approvals</button>
+      <div>
+        <span>正在处理</span><strong>{{ counts.running }}</strong>
       </div>
-      <div class="user-info">
-        <span v-if="authStore.user" class="username">
-          {{ authStore.user.user_id }} ({{ authStore.user.role }})
-        </span>
-        <button class="btn-secondary" @click="handleLogout">Log Out</button>
+      <div>
+        <span>等待审批</span><strong>{{ counts.waiting }}</strong>
       </div>
-    </header>
-
-    <main class="content-container">
-      <!-- Left Column: Submit Ticket & History List -->
-      <section class="sidebar">
-        <div class="card submit-card">
-          <h3>Submit IT Ticket</h3>
-          <div v-if="submitError" class="error-banner">
-            {{ submitError }}
-          </div>
-          <form @submit.prevent="handleCreateTicket">
-            <textarea
-              v-model="newQuery"
-              rows="3"
-              required
-              placeholder="Describe your issue (e.g. VPN connection failed, password reset)..."
-            ></textarea>
-            <button
-              type="submit"
-              :disabled="ticketStore.loading"
-              class="btn-primary"
+      <div>
+        <span>已解决</span><strong>{{ counts.resolved }}</strong>
+      </div>
+      <small>基于当前账号可见工单</small>
+    </div>
+    <section class="panel intake-panel" aria-labelledby="intake-heading">
+      <div class="intake-intro">
+        <span class="intake-icon"><UiIcon name="plus" :size="23" /></span>
+        <h2 id="intake-heading">有什么需要处理？</h2>
+        <p>咨询、查询或发起操作，<br />从一句话开始。</p>
+      </div>
+      <form class="intake-form" @submit.prevent="handleCreateTicket">
+        <label for="ticket-query" class="sr-only">工单描述</label>
+        <textarea
+          id="ticket-query"
+          v-model="newQuery"
+          rows="2"
+          maxlength="2000"
+          placeholder="例如：VPN 连接失败，应该如何排查？"
+          aria-describedby="query-hint"
+          :aria-invalid="Boolean(submitError)"
+          :disabled="submitting"
+        ></textarea>
+        <div v-if="submitError" class="error-banner" role="alert">
+          {{ submitError }}
+        </div>
+        <div class="intake-bottom">
+          <div class="example-queries">
+            <span>试试看</span
+            ><button
+              v-for="example in examples"
+              :key="example.label"
+              type="button"
+              :disabled="submitting"
+              @click="newQuery = example.query"
             >
-              {{ ticketStore.loading ? 'Submitting...' : 'Submit Ticket' }}
+              {{ example.label }}
             </button>
-          </form>
+          </div>
+          <button class="button primary" type="submit" :disabled="submitting">
+            {{ submitting ? '提交中…' : '提交工单'
+            }}<UiIcon name="arrow" :size="16" />
+          </button>
         </div>
-
-        <div class="card list-card">
-          <h3>Your Tickets</h3>
-          <div v-if="ticketStore.tickets.length === 0" class="empty-state">
-            No tickets found. Submit a request above.
-          </div>
-          <ul v-else class="ticket-list">
-            <li
-              v-for="item in ticketStore.tickets"
-              :key="item.ticket_id"
-              :class="[
-                'ticket-item',
-                { active: ticketStore.currentTicket?.ticket_id === item.ticket_id },
-              ]"
-              @click="selectTicket(item.ticket_id)"
-            >
-              <div class="item-header">
-                <span :class="['status-badge', item.status]">{{ item.status }}</span>
-                <span class="ticket-time">
-                  {{ new Date(item.updated_at).toLocaleTimeString() }}
-                </span>
-              </div>
-              <div class="ticket-id-preview">
-                ID: {{ item.ticket_id.slice(0, 8) }}...
-              </div>
-            </li>
-          </ul>
+        <p id="query-hint" class="field-hint">
+          使用模拟数据；权限申请仅创建请求，高风险写操作需人工审批。
+        </p>
+      </form>
+    </section>
+    <div
+      v-if="ticketStore.error && !submitError"
+      class="error-banner"
+      role="alert"
+    >
+      {{ ticketStore.error }}
+    </div>
+    <div class="split-workspace">
+      <section class="panel" aria-labelledby="ticket-list-heading">
+        <div class="panel-heading">
+          <h3 id="ticket-list-heading">我的工单</h3>
+          <span class="muted mono">{{ visibleTickets.length }}</span>
         </div>
-      </section>
-
-      <!-- Right Column: Selected Ticket Details & Citations -->
-      <section class="main-content">
-        <div v-if="ticketStore.currentTicket" class="card detail-card">
-          <div class="detail-header">
-            <div>
-              <h2>Ticket Details</h2>
-              <p class="ticket-uuid">ID: {{ ticketStore.currentTicket.ticket_id }}</p>
-            </div>
-            <div class="header-actions">
-              <span :class="['status-badge', ticketStore.currentTicket.status]">
-                {{ ticketStore.currentTicket.status }}
-              </span>
-              <button
-                class="btn-trace"
-                @click="router.push({ name: 'traces', params: { ticketId: ticketStore.currentTicket.ticket_id } })"
-              >
-                Inspect Trace
-              </button>
-            </div>
-          </div>
-
-          <div class="meta-grid">
-            <div class="meta-item">
-              <span class="meta-label">Intent:</span>
-              <span class="meta-value">{{ ticketStore.currentTicket.intent || 'pending' }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Risk Level:</span>
-              <span class="meta-value">{{ ticketStore.currentTicket.risk_level || 'pending' }}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Resolution Mode:</span>
-              <span class="meta-value">{{ ticketStore.currentTicket.resolution_mode || 'pending' }}</span>
-            </div>
-          </div>
-
-          <!-- Progress Indicator for Running Tickets -->
-          <div
-            v-if="
-              ticketStore.currentTicket.status === 'queued' ||
-              ticketStore.currentTicket.status === 'running'
-            "
-            class="progress-box"
+        <div class="ticket-filters tabs" aria-label="筛选工单">
+          <button
+            v-for="tab in [
+              { key: 'all', label: '全部' },
+              { key: 'active', label: '进行中' },
+              { key: 'resolved', label: '已解决' },
+            ] as const"
+            :key="tab.key"
+            :class="['tab', { active: filter === tab.key }]"
+            :aria-pressed="filter === tab.key"
+            @click="filter = tab.key"
           >
-            <span class="pulse-indicator"></span>
-            Agent workflow is executing. Auto-polling every 2 seconds...
+            {{ tab.label }}
+          </button>
+        </div>
+        <div v-if="!visibleTickets.length" class="empty-state compact">
+          <UiIcon name="tickets" :size="28" />
+          <p>
+            {{
+              ticketStore.loading
+                ? '正在加载工单…'
+                : '这里还没有工单。提交请求后即可跟进。'
+            }}
+          </p>
+        </div>
+        <button
+          v-for="item in visibleTickets"
+          :key="item.ticket_id"
+          :class="[
+            'list-row',
+            {
+              selected: ticketStore.currentTicket?.ticket_id === item.ticket_id,
+            },
+          ]"
+          :aria-pressed="
+            ticketStore.currentTicket?.ticket_id === item.ticket_id
+          "
+          @click="selectTicket(item.ticket_id)"
+        >
+          <div class="row-top">
+            <span class="row-title">{{
+              item.intent ? intentLabels[item.intent] : '等待分类'
+            }}</span
+            ><span :class="['badge', item.status]">{{
+              statusLabels[item.status]
+            }}</span>
           </div>
-
-          <!-- Final Response -->
-          <div class="section-box response-section">
-            <h3>Final Response</h3>
-            <div v-if="ticketStore.currentTicket.final_response" class="response-text">
-              {{ ticketStore.currentTicket.final_response }}
-            </div>
-            <div v-else class="pending-text">
-              No final response yet. Processing ticket...
-            </div>
+          <div class="row-meta">
+            <span class="mono">#{{ item.ticket_id.slice(0, 8) }}</span
+            ><time :datetime="item.updated_at">{{
+              formatDate(item.updated_at)
+            }}</time>
           </div>
-
-          <!-- 5-Field Citations Knowledge References -->
-          <div class="section-box citations-section">
-            <h3>Knowledge References & Citations</h3>
+        </button>
+      </section>
+      <section
+        class="panel ticket-detail"
+        aria-labelledby="detail-heading"
+        :aria-busy="ticketStore.loading"
+      >
+        <template v-if="ticketStore.currentTicket">
+          <div class="panel-heading">
+            <div>
+              <h2 id="detail-heading">
+                {{
+                  ticketStore.currentTicket.intent
+                    ? intentLabels[ticketStore.currentTicket.intent]
+                    : '请求处理中'
+                }}
+              </h2>
+              <p class="mono">#{{ ticketStore.currentTicket.ticket_id }}</p>
+            </div>
+            <span :class="['badge', ticketStore.currentTicket.status]">{{
+              statusLabels[ticketStore.currentTicket.status]
+            }}</span>
+          </div>
+          <div class="panel-body">
+            <dl class="metadata">
+              <div>
+                <dt>请求分类</dt>
+                <dd>
+                  {{
+                    ticketStore.currentTicket.intent
+                      ? intentLabels[ticketStore.currentTicket.intent]
+                      : '等待分类'
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>操作风险</dt>
+                <dd>
+                  <span
+                    v-if="ticketStore.currentTicket.risk_level"
+                    :class="['badge', ticketStore.currentTicket.risk_level]"
+                    >{{
+                      riskLabels[ticketStore.currentTicket.risk_level]
+                    }}</span
+                  ><span v-else>尚未判定</span>
+                </dd>
+              </div>
+              <div>
+                <dt>处理方式</dt>
+                <dd>
+                  {{
+                    ticketStore.currentTicket.resolution_mode
+                      ? resolutionLabels[
+                          ticketStore.currentTicket.resolution_mode
+                        ] || ticketStore.currentTicket.resolution_mode
+                      : '等待处理'
+                  }}
+                </dd>
+              </div>
+            </dl>
             <div
-              v-if="!ticketStore.currentTicket.knowledge_refs || ticketStore.currentTicket.knowledge_refs.length === 0"
-              class="pending-text"
+              v-if="
+                ['queued', 'running'].includes(ticketStore.currentTicket.status)
+              "
+              class="notice processing-notice"
+              role="status"
             >
-              No knowledge citations associated with this ticket.
-            </div>
-            <div v-else class="citation-cards">
-              <div
-                v-for="(refItem, index) in ticketStore.currentTicket.knowledge_refs"
-                :key="refItem.chunk_id || index"
-                class="citation-card"
-              >
-                <div class="citation-title">
-                  {{ refItem.title }}
-                  <span class="citation-score">
-                    Confidence: {{ (refItem.score * 100).toFixed(1) }}%
-                  </span>
-                </div>
-                <div class="citation-excerpt">
-                  "{{ refItem.content_excerpt }}"
-                </div>
-                <div class="citation-meta">
-                  <span>Document ID: {{ refItem.document_id }}</span>
-                  <span>Chunk ID: {{ refItem.chunk_id }}</span>
-                </div>
+              <span class="activity-dot"></span>
+              <div>
+                <strong>{{
+                  ticketStore.currentTicket.status === 'queued'
+                    ? '请求已接收，正在排队'
+                    : 'Agent 正在处理请求'
+                }}</strong>
+                <p>状态会自动更新。可以继续提交其他工单。</p>
               </div>
             </div>
+            <div
+              v-else-if="
+                ticketStore.currentTicket.status === 'waiting_approval'
+              "
+              class="notice warning processing-notice"
+            >
+              <UiIcon name="shield" :size="18" />
+              <div>
+                <strong>等待人工审批</strong>
+                <p>{{ responseNotes }}</p>
+                <button
+                  v-if="authStore.user?.role === 'approver'"
+                  class="text-button"
+                  @click="router.push('/approvals')"
+                >
+                  前往审批中心<UiIcon name="arrow" :size="14" />
+                </button>
+              </div>
+            </div>
+            <hr class="divider" />
+            <div class="section-heading">
+              <h3>处理答复</h3>
+              <UiIcon name="check" :size="17" />
+            </div>
+            <p
+              v-if="ticketStore.currentTicket.final_response"
+              class="response-text"
+            >
+              {{ ticketStore.currentTicket.final_response }}
+            </p>
+            <p v-else class="response-placeholder">{{ responseNotes }}</p>
+            <template v-if="knowledgeRefs.length"
+              ><hr class="divider" />
+              <div class="section-heading">
+                <h3>参考知识</h3>
+                <small>{{ knowledgeRefs.length }} 条可回查引用</small>
+              </div>
+              <article
+                v-for="(reference, index) in knowledgeRefs"
+                :key="reference.document_id + ':' + reference.chunk_id"
+                class="citation"
+              >
+                <div class="citation-number">
+                  {{ String(index + 1).padStart(2, '0') }}
+                </div>
+                <div>
+                  <h3>{{ reference.title }}</h3>
+                  <p>{{ reference.content_excerpt }}</p>
+                  <details>
+                    <summary>查看引用来源</summary>
+                    <dl>
+                      <dt>文档</dt>
+                      <dd class="mono">{{ reference.document_id }}</dd>
+                      <dt>片段</dt>
+                      <dd class="mono">{{ reference.chunk_id }}</dd>
+                      <dt>检索分数（不代表可信度）</dt>
+                      <dd>{{ reference.score }}</dd>
+                    </dl>
+                  </details>
+                </div>
+              </article></template
+            >
+          </div>
+          <div class="detail-footer">
+            <span
+              >更新于
+              {{ formatDate(ticketStore.currentTicket.updated_at) }}</span
+            ><button
+              class="text-button"
+              @click="
+                router.push({
+                  name: 'traces',
+                  params: { ticketId: ticketStore.currentTicket.ticket_id },
+                })
+              "
+            >
+              查看执行轨迹<UiIcon name="arrow" :size="15" />
+            </button>
+          </div>
+        </template>
+        <div v-else class="empty-state ticket-placeholder">
+          <UiIcon name="tickets" :size="35" /><span class="eyebrow"
+            >ONE REQUEST. EVERY STEP.</span
+          >
+          <h2 id="detail-heading">从请求到结果，过程清楚可见</h2>
+          <p>选择左侧工单，查看处理状态、最终答复和知识依据。</p>
+          <div class="workflow-preview">
+            <span>分类</span><UiIcon name="arrow" :size="14" /><span
+              >检索 / 操作</span
+            ><UiIcon name="arrow" :size="14" /><span>答复</span>
           </div>
         </div>
-
-        <div v-else class="card detail-card placeholder-card">
-          <p>Select a ticket or submit a new request to see details.</p>
-        </div>
       </section>
-    </main>
-  </div>
+    </div>
+  </AppShell>
 </template>
-
 <style scoped>
-.tickets-layout {
-  min-height: 100vh;
-  background-color: #f7fafc;
+.ticket-overview {
   display: flex;
-  flex-direction: column;
-}
-
-.navbar {
-  display: flex;
-  justify-content: space-between;
+  gap: 44px;
   align-items: center;
-  background-color: #2d3748;
-  color: white;
-  padding: 0.75rem 1.5rem;
+  padding: 0 0 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
 }
-
-.brand-group {
+.ticket-overview > div {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 14px;
 }
-
-.brand {
-  font-weight: 700;
-  font-size: 1.125rem;
+.ticket-overview span {
+  font-size: 11px;
+  color: var(--muted);
 }
-
-.sub-brand {
-  font-size: 0.875rem;
-  color: #a0aec0;
-}
-
-.nav-links {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.nav-btn {
-  background: transparent;
-  color: #cbd5e0;
-  border: none;
-  padding: 0.375rem 0.75rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
-
-.nav-btn:hover {
-  background-color: #4a5568;
-  color: white;
-}
-
-.nav-btn.active {
-  background-color: #4a5568;
-  color: white;
+.ticket-overview strong {
+  font-size: 24px;
   font-weight: 600;
+  letter-spacing: -1px;
 }
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.ticket-overview small {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: auto;
 }
-
-.username {
-  font-size: 0.875rem;
-  color: #cbd5e0;
-}
-
-.content-container {
+.intake-panel {
   display: grid;
-  grid-template-columns: 360px 1fr;
-  gap: 1.5rem;
-  padding: 1.5rem;
-  flex: 1;
+  grid-template-columns: 220px minmax(0, 1fr);
+  margin-bottom: 24px;
+  padding: 24px;
+  gap: 30px;
 }
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.card {
-  background: white;
+.intake-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  background: var(--accent-soft);
+  color: var(--accent);
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin-bottom: 10px;
 }
-
-h2, h3 {
-  margin: 0 0 0.75rem 0;
-  color: #2d3748;
+.intake-intro h2 {
+  font-size: 17px;
 }
-
-textarea {
-  width: 100%;
-  padding: 0.625rem;
-  border: 1px solid #cbd5e0;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  box-sizing: border-box;
-  margin-bottom: 0.75rem;
-  font-family: inherit;
+.intake-intro p {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.9;
+  margin-top: 7px;
 }
-
-textarea:focus {
-  outline: none;
-  border-color: #3182ce;
+.intake-form textarea {
+  min-height: 76px;
+  background: #fbfcfe;
 }
-
-.btn-primary {
-  width: 100%;
-  padding: 0.625rem;
-  background-color: #3182ce;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
+.intake-form .error-banner {
+  margin-block: 10px;
 }
-
-.btn-secondary {
-  padding: 0.375rem 0.75rem;
-  background: transparent;
-  color: #e2e8f0;
-  border: 1px solid #718096;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.btn-trace {
-  padding: 0.35rem 0.75rem;
-  background-color: #2b6cb0;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-trace:hover {
-  background-color: #2c5282;
-}
-
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.ticket-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.ticket-item {
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.ticket-item:hover {
-  background-color: #f7fafc;
-}
-
-.ticket-item.active {
-  border-color: #3182ce;
-  background-color: #ebf8ff;
-}
-
-.item-header {
+.intake-bottom {
   display: flex;
   justify-content: space-between;
+  gap: 14px;
   align-items: center;
-  margin-bottom: 0.25rem;
+  margin-top: 12px;
 }
-
-.ticket-time {
-  font-size: 0.75rem;
-  color: #a0aec0;
-}
-
-.ticket-id-preview {
-  font-size: 0.75rem;
-  color: #718096;
-  font-family: monospace;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.status-badge.queued {
-  background: #feebc8;
-  color: #7b341e;
-}
-
-.status-badge.running {
-  background: #bee3f8;
-  color: #2b6cb0;
-}
-
-.status-badge.resolved {
-  background: #c6f6d5;
-  color: #22543d;
-}
-
-.status-badge.escalated, .status-badge.failed, .status-badge.rejected {
-  background: #fed7d7;
-  color: #9b2c2c;
-}
-
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.25rem;
-}
-
-.ticket-uuid {
-  margin: 0;
-  font-family: monospace;
-  font-size: 0.875rem;
-  color: #718096;
-}
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  background: #f7fafc;
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
-  margin-bottom: 1.25rem;
-}
-
-.meta-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.meta-label {
-  font-size: 0.75rem;
-  color: #718096;
-  text-transform: uppercase;
-}
-
-.meta-value {
-  font-weight: 600;
-  color: #2d3748;
-}
-
-.progress-box {
+.example-queries {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  background-color: #ebf8ff;
-  color: #2b6cb0;
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
-  margin-bottom: 1.25rem;
-  font-size: 0.875rem;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 10px;
 }
-
-.pulse-indicator {
-  width: 8px;
-  height: 8px;
+.example-queries > span {
+  color: var(--muted);
+}
+.example-queries button {
+  padding: 4px 8px;
+  color: #4d627e;
+  background: #f1f4f8;
+  border: 0;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.example-queries button:hover {
+  background: #e4edff;
+  color: var(--accent);
+}
+.ticket-filters {
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.processing-notice {
+  margin-top: 24px;
+}
+.activity-dot {
+  height: 7px;
+  width: 7px;
   border-radius: 50%;
-  background-color: #3182ce;
-  animation: pulse 1.5s infinite ease-in-out;
+  background: var(--accent);
+  margin-top: 7px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px #245ee811;
 }
-
-@keyframes pulse {
-  0% { transform: scale(0.8); opacity: 0.5; }
-  50% { transform: scale(1.2); opacity: 1; }
-  100% { transform: scale(0.8); opacity: 0.5; }
-}
-
-.section-box {
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid #e2e8f0;
-}
-
 .response-text {
-  background: #f0fff4;
-  border-left: 4px solid #38a169;
-  padding: 1rem;
-  border-radius: 0 4px 4px 0;
-  color: #2d3748;
-  line-height: 1.5;
   white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.9;
 }
-
-.citation-cards {
+.response-placeholder {
+  color: var(--muted);
+  font-size: 12px;
+}
+.citation {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
 }
-
-.citation-card {
-  border: 1px solid #cbd5e0;
+.citation:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.citation-number {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
   border-radius: 4px;
-  padding: 0.75rem 1rem;
-  background: #ffffff;
 }
-
-.citation-title {
-  font-weight: 600;
-  color: #2b6cb0;
+.citation h3 {
+  font-size: 12px;
+}
+.citation p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.9;
+  margin-top: 6px;
+}
+.citation summary {
+  font-size: 10px;
+  color: var(--accent);
+  margin-top: 9px;
+}
+.citation dl {
+  margin: 10px 0 0;
+  font-size: 11px;
+}
+.citation dt {
+  color: var(--muted);
+  margin-top: 6px;
+}
+.citation dd {
+  margin: 0;
+}
+.detail-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  gap: 12px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--muted);
 }
-
-.citation-score {
-  font-size: 0.75rem;
-  color: #4a5568;
-  font-weight: normal;
+.ticket-placeholder {
+  min-height: 365px;
 }
-
-.citation-excerpt {
-  font-style: italic;
-  color: #4a5568;
-  font-size: 0.875rem;
-  margin-bottom: 0.5rem;
-  line-height: 1.4;
-}
-
-.citation-meta {
-  font-size: 0.75rem;
-  color: #a0aec0;
+.workflow-preview {
   display: flex;
-  gap: 1rem;
-  font-family: monospace;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  font-size: 11px;
+  color: #5a7193;
 }
-
-.pending-text, .empty-state {
-  color: #a0aec0;
-  font-style: italic;
-  font-size: 0.875rem;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
-
-.error-banner {
-  background-color: #fed7d7;
-  color: #c53030;
-  padding: 0.5rem;
-  border-radius: 4px;
-  margin-bottom: 0.75rem;
-  font-size: 0.875rem;
+@media (max-width: 1150px) {
+  .ticket-overview {
+    gap: 25px;
+  }
+  .ticket-overview small {
+    display: none;
+  }
+  .intake-panel {
+    grid-template-columns: 175px minmax(0, 1fr);
+    gap: 22px;
+  }
+}
+@media (max-width: 650px) {
+  .ticket-overview {
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .ticket-overview > div {
+    display: block;
+  }
+  .ticket-overview strong {
+    display: block;
+    margin-top: 6px;
+  }
+  .intake-panel {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px;
+  }
+  .intake-intro {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    column-gap: 12px;
+    align-items: center;
+  }
+  .intake-icon {
+    grid-row: span 2;
+    margin: 0;
+  }
+  .intake-intro p {
+    margin: 0;
+  }
+  .intake-intro br {
+    display: none;
+  }
+  .intake-bottom {
+    align-items: flex-start;
+  }
+  .example-queries {
+    gap: 6px;
+  }
+  .example-queries > span {
+    display: none;
+  }
 }
 </style>

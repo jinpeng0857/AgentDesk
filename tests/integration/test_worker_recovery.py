@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -24,12 +23,14 @@ from backend.db.models import TicketRecord
 from backend.db.repositories.tickets import TicketRepository
 from backend.governance.executor import ReadToolExecutor, ToolAdapters
 from backend.graph.builder import build_ticket_graph
+from backend.graph.checkpointing import create_postgres_checkpointer
 from backend.graph.context import GraphContext
 from backend.integrations.model_client import ModelTransportError
 from backend.integrations.prompt_loader import load_all_prompts
 from backend.jobs.tickets import GraphTicketRunner, start_job_id
-from tests.fakes.model_client import FakeModelClient
-from tests.fakes.tools import (
+from tests.integration.conftest import REQUESTER_ID, to_psycopg_url
+from tests.support.fakes.model_client import FakeModelClient
+from tests.support.fakes.tools import (
     DisabledAccessRequestService,
     DisabledCredentialService,
     DisabledRefundService,
@@ -44,7 +45,6 @@ from tests.fakes.tools import (
     service_result,
     user_result,
 )
-from tests.integration.conftest import REQUESTER_ID, to_psycopg_url
 
 
 @pytest.mark.asyncio
@@ -143,7 +143,7 @@ async def test_worker_recovery_from_postgres_checkpoint(
         open=False,
     )
     await pool_1.open()
-    checkpointer_1 = AsyncPostgresSaver(pool_1)
+    checkpointer_1 = create_postgres_checkpointer(pool_1)
 
     graph_1 = build_ticket_graph(context_1, checkpointer=checkpointer_1)
     runner_1 = GraphTicketRunner(
@@ -194,7 +194,15 @@ async def test_worker_recovery_from_postgres_checkpoint(
                 knowledge_refs=[sample_ref],
                 fallback=False,
             ),
-            # 2. Supervisor finalizer resolves ticket
+            # 2. Supervisor routes from the recovered Knowledge output
+            RoutingDecision(
+                intent=Intent.NETWORK,
+                next_agent="finalize",
+                confidence=0.95,
+                escalate=False,
+                reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+            ),
+            # 3. Supervisor finalizer resolves ticket
             FinalResponse(
                 kind="final",
                 resolution_mode=ResolutionMode.AUTOMATED,
@@ -216,7 +224,7 @@ async def test_worker_recovery_from_postgres_checkpoint(
         open=False,
     )
     await pool_2.open()
-    checkpointer_2 = AsyncPostgresSaver(pool_2)
+    checkpointer_2 = create_postgres_checkpointer(pool_2)
 
     graph_2 = build_ticket_graph(context_2, checkpointer=checkpointer_2)
     runner_2 = GraphTicketRunner(
@@ -233,10 +241,11 @@ async def test_worker_recovery_from_postgres_checkpoint(
     assert final_status == TicketStatus.RESOLVED
 
     # - CRITICAL: Supervisor classifier was NOT repeated!
-    # model_2 was called only for KnowledgeAgentOutput and FinalResponse
-    assert len(model_2.calls) == 2
+    # Classification is not replayed; Supervisor routes from the recovered Knowledge output.
+    assert len(model_2.calls) == 3
     assert model_2.calls[0].output_model is KnowledgeAgentOutput
-    assert model_2.calls[1].output_model is FinalResponse
+    assert model_2.calls[1].output_model is RoutingDecision
+    assert model_2.calls[2].output_model is FinalResponse
 
     # - Projection in PostgreSQL is fully updated
     async with session_factory() as session:
@@ -262,7 +271,7 @@ async def test_worker_recovery_from_postgres_checkpoint(
     # Stage 3: Running again on terminal ticket short-circuits immediately without model calls
     terminal_status = await runner_2.run(str(ticket_id))
     assert terminal_status == TicketStatus.RESOLVED
-    assert len(model_2.calls) == 2  # No new calls
+    assert len(model_2.calls) == 3  # No new calls
 
     # Deterministic job ID assertion
     assert start_job_id(str(ticket_id)) == f"start:{ticket_id}"

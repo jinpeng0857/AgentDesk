@@ -23,8 +23,10 @@ def test_validate_node_output_keys_accepts_valid_updates() -> None:
     # knowledge can write knowledge_refs
     validate_node_output_keys("knowledge", {"knowledge_refs": []})
 
-    # action_propose can write pending_operation
-    validate_node_output_keys("action_propose", {"pending_operation": None})
+    # action_propose can retain a proposal; write proposals become pending operations.
+    validate_node_output_keys(
+        "action_propose", {"action_proposal": None, "pending_operation": None}
+    )
 
     # action_execute can write tool_results
     validate_node_output_keys("action_execute", {"tool_results": []})

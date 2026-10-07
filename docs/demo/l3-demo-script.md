@@ -79,7 +79,7 @@
 
 ## 4. 容灾与幂等演练：Worker 宕机恢复（45 秒）
 
-- **测试用例**：`F-07` / `scripts/recovery_drill.ps1`
+- **测试用例**：`F-07` / `scripts/acceptance/recovery_drill.py`
 - **故障模拟**：
   - 关键写操作写入账本后，在 Worker 提交下一步状态前强制杀进程崩溃（SIGKILL / 异常注入）。
 - **演示看点**：

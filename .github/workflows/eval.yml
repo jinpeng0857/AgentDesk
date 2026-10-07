@@ -15,7 +15,7 @@ on:
           - e2e-candidate
 
 jobs:
-  offline-eval:
+  offline-harness:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,23 +31,37 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Run Offline Eval Harness Smoke
+      - name: Run Offline Classification Harness Smoke
         run: >
-          uv run python eval/run_eval.py
+          uv run python -m eval.run_eval
           --mode offline
           --stage model-baseline
-          --output eval/artifacts/offline-ci-run.json
+          --output artifacts/evaluation/candidates/offline-ci-run.local.json
 
-      - name: Upload Offline Eval Artifact
+      - name: Upload Offline Harness Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: offline-eval-artifact
-          path: eval/artifacts/offline-ci-run.json
+          name: offline-eval-harness
+          path: artifacts/evaluation/candidates/offline-ci-run.local.json
 
-  live-eval:
+  live-candidate:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: evaluation
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: agentdesk
+          POSTGRES_PASSWORD: agentdesk
+          POSTGRES_DB: agentdesk_eval_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -62,20 +76,33 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Run Live Eval Candidate
+      - name: Validate live endpoint configuration
+        env:
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        run: |
+          if [ -z "$OPENAI_BASE_URL" ]; then
+            echo "Set the evaluation environment OPENAI_BASE_URL to an OpenAI-compatible live model endpoint."
+            exit 1
+          fi
+
+      - name: Run fixed-denominator live candidate
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          EVAL_TEST_DATABASE_URL: postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_eval_test
         run: >
-          uv run python eval/run_eval.py
+          uv run python -m eval.run_eval
           --mode live
           --stage ${{ github.event.inputs.stage }}
-          --compare eval/artifacts/phase1-before.json
-          --output eval/artifacts/phase1-candidate.json
+          --model "${OPENAI_MODEL:-qwen3:8b}"
+          --database-url "$EVAL_TEST_DATABASE_URL"
+          --output artifacts/evaluation/candidates/live-${{ github.run_id }}.json
 
       - name: Upload Live Candidate Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-eval-candidate
-          path: eval/artifacts/phase1-candidate.json
+          name: live-eval-candidate-${{ github.run_id }}
+          path: artifacts/evaluation/candidates/live-${{ github.run_id }}.json
+          if-no-files-found: warn

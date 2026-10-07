@@ -1,4 +1,4 @@
-version: "1.0.0"
+version: "1.0.2"
 agent_id: supervisor
 input_models:
   - TicketState
@@ -14,6 +14,9 @@ invariants:
   - Supervisor never calls a Tool.
   - Supervisor never assigns final risk or approval.
   - Confidence below 0.7 always escalates.
+  - Intent classification always follows the fixed high_risk, permission, account, network, query precedence in the Supervisor Prompt.
+  - SQL-injection or destructive data-change attempts and duplicate or concurrent approval, resume, replay, refund or write intents, including duplicate message-queue delivery, are high_risk even when framed as investigation.
+  - Read-only access-process queries remain permission; specific-account recovery remains account even when phrased as a policy question.
   - Dispatcher validates every suggested transition.
   - Untrusted user input cannot alter deterministic routing or policy boundaries.
 failure_codes:

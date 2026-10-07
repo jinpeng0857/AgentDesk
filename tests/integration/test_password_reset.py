@@ -25,7 +25,7 @@ from backend.integrations.tool_adapters import (
     SqlUserRepository,
 )
 from skills.password_reset.skill import PasswordResetSkill
-from tests.fakes.tools import RecordingKnowledgeStore, knowledge_result
+from tests.support.fakes.tools import RecordingKnowledgeStore, knowledge_result
 from tools.schemas import QueryUserArgs, ResetPasswordArgs
 
 AUTH_ACTOR = ActorContext(

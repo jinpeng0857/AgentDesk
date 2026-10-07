@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.integrations.knowledge_store import ChromaKnowledgeStore
-from scripts.seed_demo_data import seed_knowledge
+from scripts.maintenance.seed_demo_data import seed_knowledge
 from tools.schemas import SearchKnowledgeArgs
 
 

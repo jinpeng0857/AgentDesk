@@ -32,7 +32,7 @@ from backend.governance.executor import (
     ToolAdapters,
     WriteToolExecutor,
 )
-from tests.fakes.tools import (
+from tests.support.fakes.tools import (
     InMemoryAuditSink,
     RecordingKnowledgeStore,
     RecordingOrderRepository,

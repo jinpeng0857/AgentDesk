@@ -7,7 +7,7 @@ from tools.registry import TOOL_REGISTRY
 
 
 def _dataset_module():
-    return importlib.import_module("scripts.validate_golden_dataset")
+    return importlib.import_module("scripts.maintenance.validate_golden_dataset")
 
 
 def _dataset():

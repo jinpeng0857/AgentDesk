@@ -45,6 +45,7 @@ def test_initial_ticket_state_shape() -> None:
     assert state["step_count"] == 0
     assert state["agent_history"] == []
     assert state["knowledge_refs"] == []
+    assert state["action_proposal"] is None
     assert state["tool_results"] == []
     assert state["intent"] is None
     assert state["routing_decision"] is None

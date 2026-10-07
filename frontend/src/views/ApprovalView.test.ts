@@ -76,7 +76,7 @@ describe('ApprovalView', () => {
 
     // Renders summary in sidebar
     expect(wrapper.text()).toContain('process_refund')
-    expect(wrapper.text()).toContain('high risk')
+    expect(wrapper.text()).toContain('高风险')
 
     // Renders detail in main area
     expect(wrapper.text()).toContain('app-001')
@@ -142,8 +142,8 @@ describe('ApprovalView', () => {
 
     // Once decided, form is replaced by Decision Recorded box
     expect(wrapper.find('[data-testid="approve-button"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Decision Recorded')
-    expect(wrapper.text()).toContain('approved')
+    expect(wrapper.text()).toContain('审批决定已记录')
+    expect(wrapper.text()).toContain('已通过')
   })
 
   it('submits reject decision with expected version', async () => {
@@ -187,8 +187,8 @@ describe('ApprovalView', () => {
     })
 
     expect(wrapper.find('[data-testid="reject-button"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Decision Recorded')
-    expect(wrapper.text()).toContain('rejected')
+    expect(wrapper.text()).toContain('审批决定已记录')
+    expect(wrapper.text()).toContain('已拒绝')
   })
 
   it('displays error banner when 409 version conflict occurs', async () => {
@@ -260,7 +260,7 @@ describe('ApprovalView', () => {
 
     expect(wrapper.find('[data-testid="approve-button"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="reject-button"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Approval Expired')
-    expect(wrapper.text()).toContain('exceeded its TTL')
+    expect(wrapper.text()).toContain('审批已过期')
+    expect(wrapper.text()).toContain('已超过审批有效期')
   })
 })

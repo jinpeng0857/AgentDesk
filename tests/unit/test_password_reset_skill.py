@@ -14,7 +14,7 @@ from backend.governance.encryption import ResultEncryptor
 from backend.governance.executor import ToolAdapters, WriteToolExecutor
 from skills.password_reset.skill import PasswordResetSkill
 from skills.password_reset.validate_user import UserValidationError, validate_user_for_reset
-from tests.fakes.tools import (
+from tests.support.fakes.tools import (
     InMemoryAuditSink,
     RecordingKnowledgeStore,
     RecordingOrderRepository,

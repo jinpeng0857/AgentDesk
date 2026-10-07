@@ -41,7 +41,7 @@ from backend.integrations.tool_adapters import (
     SqlServiceRepository,
     SqlUserRepository,
 )
-from scripts.seed_demo_data import seed_knowledge
+from scripts.maintenance.seed_demo_data import seed_knowledge
 from tests.integration.conftest import REQUESTER_ID
 
 WRITE_TOOLS = ("create_ticket", "request_access", "reset_password", "process_refund")

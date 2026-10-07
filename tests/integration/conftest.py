@@ -36,7 +36,7 @@ from backend.db.models import UserRecord
 from backend.db.session import async_session_factory
 from backend.jobs.serialization import json_job_deserializer, json_job_serializer
 from backend.main import create_app
-from scripts.seed_demo_data import seed_orders, seed_services, seed_users
+from scripts.maintenance.seed_demo_data import seed_orders, seed_services, seed_users
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -45,6 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TEST_DATABASE_URL = (
     "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_test"
 )
+DEFAULT_TEST_REDIS_URL = "redis://127.0.0.1:6379/15"
 
 
 def database_name(url: str) -> str:
@@ -58,6 +59,11 @@ def to_psycopg_url(url: str) -> str:
 def to_maintenance_url(url: str) -> str:
     base, _, _name = to_psycopg_url(url).rpartition("/")
     return f"{base}/postgres"
+
+
+def configured_test_redis_url() -> str:
+    """Honor the isolated Redis endpoint supplied by the acceptance environment."""
+    return os.environ.get("REDIS_URL", DEFAULT_TEST_REDIS_URL)
 
 
 async def _recreate_database(url: str) -> None:
@@ -182,7 +188,7 @@ async def seeded_users(session_factory: async_sessionmaker[AsyncSession]) -> Non
 def api_settings(test_database_url: str) -> AppSettings:
     return AppSettings(
         database_url=test_database_url,
-        redis_url="redis://127.0.0.1:6379/15",
+        redis_url=configured_test_redis_url(),
         jwt_secret=TEST_JWT_SECRET,
         openai_model="test-model",
     )
@@ -206,13 +212,10 @@ async def api_client(api_app: FastAPI) -> AsyncIterator[AsyncClient]:
         yield client
 
 
-TEST_REDIS_URL = "redis://127.0.0.1:6379/15"
-
-
 @pytest.fixture
 async def redis_pool() -> AsyncIterator[ArqRedis]:
     pool = await create_pool(
-        RedisSettings.from_dsn(TEST_REDIS_URL),
+        RedisSettings.from_dsn(configured_test_redis_url()),
         job_serializer=json_job_serializer,
         job_deserializer=json_job_deserializer,
     )

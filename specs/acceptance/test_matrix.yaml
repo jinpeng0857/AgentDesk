@@ -1,0 +1,294 @@
+version: 1.0.0
+description: >-
+  Executable acceptance inventory for the frozen AgentDesk hard constraints and
+  deterministic failure modes. Each test node is checked against the source AST.
+defaults: &defaults
+  test_level: unit/integration
+  commands:
+    - uv run pytest <registered-test-nodes> -q
+  dependencies:
+    - Python 3.12
+    - uv development environment
+  expected_result: Registered deterministic checks pass without weakening assertions.
+  evidence_location: docs/acceptance/current.md and CI backend-checks test output
+  ci_entrypoint: .github/workflows/backend-ci.yml / backend-checks
+  manual_entrypoint: PowerShell at repository root; run the listed pytest command
+acceptance:
+  - <<: *defaults
+    id: H-01
+    source_constraint: AGENTS.md §2 H-01; exactly four logical Agent roles
+    test_nodes:
+      - tests/unit/test_agent_contracts.py::test_all_agent_and_prompt_contracts_are_valid
+      - tests/unit/test_tool_registry.py::test_agent_whitelist_enforces_role_boundaries
+  - <<: *defaults
+    id: H-02
+    source_constraint: AGENTS.md §2 H-02; Supervisor has no tools
+    test_nodes:
+      - tests/unit/test_agents.py::test_supervisor_prompt_never_carries_a_tool_catalogue
+      - tests/unit/test_tool_registry.py::test_agent_whitelist_enforces_role_boundaries
+  - <<: *defaults
+    id: H-03
+    source_constraint: AGENTS.md §2 H-03 and §2.1; graph node state ownership
+    test_nodes:
+      - tests/unit/test_state_ownership.py::test_node_owned_keys_covers_all_nodes
+      - tests/unit/test_state_ownership.py::test_validate_node_output_keys_rejects_unowned_field_writes
+  - <<: *defaults
+    id: H-04
+    source_constraint: AGENTS.md §2 H-04; deterministic Dispatcher routes only legal transitions
+    test_nodes:
+      - tests/unit/test_routing.py::test_route_from_supervisor_legal_targets
+      - tests/unit/test_routing.py::test_route_from_supervisor_escalation_on_low_confidence_or_flag
+  - <<: *defaults
+    id: H-05
+    source_constraint: AGENTS.md §2 H-05; all writes pass through the governance executor
+    test_nodes:
+      - tests/unit/test_write_executor.py::test_high_risk_refund_without_approval_refused
+      - tests/integration/test_operation_ledger.py::test_write_executor_persists_to_postgresql_and_cache_hits
+  - <<: *defaults
+    id: H-06
+    source_constraint: AGENTS.md §2 H-06; code whitelist checked before dispatch
+    test_nodes:
+      - tests/unit/test_read_executor.py::test_agent_whitelist_is_enforced_before_dispatch
+      - tests/unit/test_write_executor.py::test_whitelist_refused_before_adapter
+  - <<: *defaults
+    id: H-07
+    source_constraint: AGENTS.md §2 H-07; MAX_STEPS is fixed at 15 and escalates
+    test_nodes:
+      - tests/unit/test_routing.py::test_advance_dispatch_halts_at_max_steps
+      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_graph_loop_halts_at_max_steps_and_escalates
+  - <<: *defaults
+    id: H-08
+    source_constraint: AGENTS.md §2 H-08; every write is assessed and high risk requires approval
+    test_nodes:
+      - tests/unit/test_policy.py::test_refund_at_threshold_is_high_risk_and_requires_human
+      - tests/integration/test_graph_hitl.py::test_high_risk_refund_interrupts_at_waiting_approval
+  - <<: *defaults
+    id: H-09
+    source_constraint: AGENTS.md §2 H-09; approval is bound to operation ID and args hash
+    test_nodes:
+      - tests/unit/test_operation_identity.py::test_validate_approval_binding_matches_exact_operation_and_hash
+      - tests/integration/test_approval_api.py::test_args_hash_mismatch_prevents_resume
+  - <<: *defaults
+    id: H-10
+    source_constraint: AGENTS.md §2 H-10; final Policy decisions are deterministic
+    test_nodes:
+      - tests/unit/test_policy.py::test_policy_allows_read_tools_as_low_risk
+      - tests/unit/test_policy.py::test_refund_at_threshold_is_high_risk_and_requires_human
+  - <<: *defaults
+    id: H-11
+    source_constraint: AGENTS.md §2 H-11; prompts use absolute constraints
+    test_nodes:
+      - tests/unit/test_agent_contracts.py::test_all_agent_and_prompt_contracts_are_valid
+      - tests/unit/test_prompt_loader.py::test_every_prompt_loads_with_its_declared_model
+  - <<: *defaults
+    id: H-12
+    source_constraint: AGENTS.md §2 H-12; API TypeScript DTOs are generated from OpenAPI
+    test_nodes:
+      - tests/unit/test_openapi_contract.py::test_openapi_exposes_exact_phase_zero_operations
+      - tests/unit/test_openapi_contract.py::test_ticket_creation_contract_is_async
+  - <<: *defaults
+    id: H-13
+    source_constraint: AGENTS.md §2 H-13; tests cannot weaken or mock core behavior
+    test_nodes:
+      - tests/unit/test_read_executor.py::test_successful_read_returns_validated_data_and_audits_it
+      - tests/integration/test_operation_ledger.py::test_concurrent_write_executor_single_side_effect
+  - <<: *defaults
+    id: H-14
+    source_constraint: AGENTS.md §2 H-14; ToolSpec has exactly eight required fields
+    test_nodes:
+      - tests/unit/test_tool_registry.py::test_tool_specs_have_exact_public_fields_and_frozen_config
+      - tests/unit/test_tool_registry.py::test_tool_risk_and_reliability_config_is_explicit
+  - <<: *defaults
+    id: H-15
+    source_constraint: AGENTS.md §2 H-15; tool descriptions expose risk and data contract
+    test_nodes:
+      - tests/unit/test_tool_registry.py::test_tool_descriptions_are_independently_reviewable
+  - <<: *defaults
+    id: H-16
+    source_constraint: AGENTS.md §2 H-16; one deterministic Password Reset Skill
+    test_nodes:
+      - tests/unit/test_password_reset_skill.py::test_password_reset_skill_full_happy_path
+      - tests/unit/test_password_reset_skill.py::test_password_reset_skill_fails_when_user_not_found
+  - <<: *defaults
+    id: H-17
+    source_constraint: AGENTS.md §2 H-17; Knowledge is read-only and citations are traceable
+    test_nodes:
+      - tests/integration/test_chroma_knowledge.py::test_every_citation_field_is_populated
+      - tests/integration/test_read_gateway_wiring.py::test_real_knowledge_read_is_executed_and_audited_with_h18_fields
+  - <<: *defaults
+    id: H-18
+    source_constraint: AGENTS.md §2 H-18; every tool attempt writes a complete audit record
+    test_nodes:
+      - tests/unit/test_read_executor.py::test_tool_attempt_requires_the_h_18_audit_fields
+      - tests/integration/test_read_gateway_wiring.py::test_unknown_tool_is_refused_and_persisted_to_the_audit_table
+  - <<: *defaults
+    id: H-19
+    source_constraint: AGENTS.md §2 H-19; sensitive values are redacted before observability
+    test_nodes:
+      - tests/unit/test_read_executor.py::test_redaction_masks_sensitive_keys_and_truncates_long_values
+      - tests/unit/test_trace_exporter.py::test_langfuse_exporter_redacts_sensitive_metadata
+  - <<: *defaults
+    id: H-20
+    source_constraint: AGENTS.md §2 H-20; measured results are traceable to versioned artifacts
+    test_nodes:
+      - tests/unit/test_eval_runner.py::test_offline_eval_is_classification_harness_only
+      - tests/unit/test_golden_dataset.py::test_dataset_validator_reports_no_issues
+  - <<: *defaults
+    id: H-21
+    source_constraint: AGENTS.md §2 H-21 and §6.3; deterministic failure cases assert terminal outcomes
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f01_timeout.py::test_f01a_optional_read_tool_consecutive_timeouts_falls_back_to_conservative_response
+      - tests/acceptance/failure_modes/test_f07_worker_recovery.py::test_f07_worker_crash_after_ledger_commit_recovers_without_duplicate_writes
+  - <<: *defaults
+    id: H-22
+    source_constraint: AGENTS.md §2 H-22; domain code has no reverse service dependency
+    test_nodes:
+      - tests/unit/test_dependency_boundaries.py::test_domain_layers_do_not_import_service_or_infrastructure
+      - tests/unit/test_dependency_boundaries.py::test_api_layer_does_not_import_graph_layer
+  - <<: *defaults
+    id: H-23
+    source_constraint: AGENTS.md §2 H-23; model access uses the unified adapter and supports deterministic fake
+    test_nodes:
+      - tests/unit/test_model_client.py::test_fake_returns_responses_in_declared_order
+      - tests/unit/test_model_client.py::test_adapter_sends_server_side_json_schema
+  - <<: *defaults
+    id: H-24
+    source_constraint: AGENTS.md §2 H-24; API creates and queues tickets without running the graph
+    test_nodes:
+      - tests/integration/test_ticket_submission.py::test_submission_never_loads_graph_execution
+      - tests/integration/test_ticket_submission.py::test_submitting_a_ticket_returns_202_and_queues_it
+  - <<: *defaults
+    id: H-25
+    source_constraint: AGENTS.md §2 H-25; PostgreSQL is durable source of truth and migrations are explicit
+    dependencies:
+      - Python 3.12
+      - PostgreSQL 17 isolated _test database
+      - Redis 7 isolated test DB
+    test_nodes:
+      - tests/integration/test_migrations.py::test_upgrade_head_builds_business_and_checkpoint_schema
+      - tests/integration/test_operation_ledger.py::test_write_executor_persists_to_postgresql_and_cache_hits
+  - <<: *defaults
+    id: H-26
+    source_constraint: AGENTS.md §2 H-26 and §11; prohibited components remain absent
+    test_nodes:
+      - tests/unit/test_tool_registry.py::test_registry_is_closed_and_delete_user_is_absent
+      - tests/unit/test_tool_registry.py::test_agent_whitelist_enforces_role_boundaries
+  - <<: *defaults
+    id: F-01a
+    source_constraint: AGENTS.md §6.3 F-01a; optional read timeout fallback
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f01_timeout.py::test_f01a_optional_read_tool_consecutive_timeouts_falls_back_to_conservative_response -q
+    dependencies:
+      - Python 3.12
+      - deterministic fake read executor
+    expected_result: Resolved with conservative fallback; terminal status, audit and side-effect count are asserted.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f01_timeout.py::test_f01a_optional_read_tool_consecutive_timeouts_falls_back_to_conservative_response
+  - <<: *defaults
+    id: F-01b
+    source_constraint: AGENTS.md §6.3 F-01b; critical write timeout escalation
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f01_timeout.py::test_f01b_critical_write_tool_consecutive_timeouts_escalates -q
+    dependencies:
+      - Python 3.12
+      - deterministic fake write executor
+    expected_result: Escalated after the fixed retry limit; terminal status, audit and side-effect count are asserted.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f01_timeout.py::test_f01b_critical_write_tool_consecutive_timeouts_escalates
+  - <<: *defaults
+    id: F-02
+    source_constraint: AGENTS.md §6.3 F-02; malformed model output repair exhaustion
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f02_invalid_model.py -q
+    dependencies:
+      - Python 3.12
+      - fixed model response sequence
+    expected_result: Escalated after the fixed repair budget; audit and zero side effects are asserted.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f02_invalid_model.py::test_f02_invalid_model_structure_escalates_after_failed_repairs
+  - <<: *defaults
+    id: F-03
+    source_constraint: AGENTS.md §6.3 F-03; graph loop capped at step 15
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f03_step_limit.py -q
+    dependencies:
+      - Python 3.12
+      - fixed loop decision sequence
+    expected_result: Escalated at MAX_STEPS with a fixed step count, audit and no post-limit tool invocation.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_graph_loop_halts_at_max_steps_and_escalates
+  - <<: *defaults
+    id: F-04
+    source_constraint: AGENTS.md §6.3 F-04; unknown and unauthorized Tool rejection
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f04_tool_governance.py -q
+    dependencies:
+      - Python 3.12
+      - PostgreSQL 17 isolated _test database
+    expected_result: Rejected with persisted audit and zero adapter side effects.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f04_tool_governance.py::test_f04_unauthorized_and_unknown_tool_rejections_have_zero_side_effects
+  - <<: *defaults
+    id: F-05
+    source_constraint: AGENTS.md §6.3 F-05; approval TTL expiry
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f05_approval_expiry.py -q
+    dependencies:
+      - Python 3.12
+      - PostgreSQL 17 isolated _test database
+    expected_result: Expired approval cannot resume execution; terminal state, audit and zero write side effects are asserted.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f05_approval_expiry.py::test_f05_approval_ttl_expiry_boundaries_and_worker_bypass_prevention
+  - <<: *defaults
+    id: F-06
+    source_constraint: AGENTS.md §6.3 F-06; injection cannot bypass governance
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f06_prompt_injection.py -q
+    dependencies:
+      - Python 3.12
+      - PostgreSQL 17 isolated _test database
+    expected_result: Governance rejects the injected write, creates audit, and records zero side effects.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f06_prompt_injection.py::test_f06_prompt_injection_cannot_bypass_policy_or_approval_gates
+  - <<: *defaults
+    id: F-07
+    source_constraint: AGENTS.md §6.3 F-07; worker crash after checkpoint/ledger commit
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f07_worker_recovery.py -q
+    dependencies:
+      - Python 3.12
+      - PostgreSQL 17 isolated _test database
+      - Redis 7 isolated test DB
+    expected_result: Worker restart reaches a terminal state with one durable operation, one audit replay and exactly one side effect.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f07_worker_recovery.py::test_f07_worker_crash_after_ledger_commit_recovers_without_duplicate_writes
+  - <<: *defaults
+    id: F-08
+    source_constraint: AGENTS.md §6.3 F-08; duplicate decisions and resumes
+    test_level: deterministic failure acceptance
+    commands:
+      - uv run pytest tests/acceptance/failure_modes/test_f08_duplicate_resume.py -q
+    dependencies:
+      - Python 3.12
+      - PostgreSQL 17 isolated _test database
+      - Redis 7 isolated test DB
+    expected_result: Exactly one approval transition, resume job and durable write; audit and terminal state are asserted.
+    evidence_location: docs/acceptance/current.md and CI backend-checks test output
+    test_nodes:
+      - tests/acceptance/failure_modes/test_f08_duplicate_resume.py::test_f08_concurrent_approval_decisions_and_duplicate_resumes_idempotency

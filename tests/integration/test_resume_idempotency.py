@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.schemas import (
     ActionProposal,
+    FinalResponse,
     Intent,
+    ResolutionMode,
     RoutingDecision,
     RoutingReason,
     TicketStatus,
@@ -22,11 +24,12 @@ from backend.config import AppSettings
 from backend.db.models import OrderRecord, RefundRecord, TicketRecord
 from backend.db.repositories.approvals import ApprovalRepository
 from backend.graph.builder import build_ticket_graph
+from backend.graph.checkpointing import create_postgres_checkpointer
 from backend.graph.context import GraphContext
 from backend.integrations.prompt_loader import load_all_prompts
 from backend.jobs.tickets import GraphTicketRunner
-from tests.fakes.model_client import FakeModelClient
 from tests.integration.conftest import APPROVER_ID, REQUESTER_ID, to_psycopg_url
+from tests.support.fakes.model_client import FakeModelClient
 from tools.schemas import ProcessRefundArgs
 
 
@@ -56,7 +59,7 @@ async def checkpointer_pool(migrated_database: str) -> AsyncConnectionPool:
         open=False,
     )
     await pool.open()
-    checkpointer = AsyncPostgresSaver(pool)
+    checkpointer = create_postgres_checkpointer(pool)
     await checkpointer.setup()
     try:
         yield pool
@@ -66,7 +69,7 @@ async def checkpointer_pool(migrated_database: str) -> AsyncConnectionPool:
 
 @pytest.fixture
 async def checkpointer(checkpointer_pool: AsyncConnectionPool) -> AsyncPostgresSaver:
-    return AsyncPostgresSaver(checkpointer_pool)
+    return create_postgres_checkpointer(checkpointer_pool)
 
 
 async def test_repeated_resume_calls_execute_write_tool_strictly_once(
@@ -118,6 +121,17 @@ async def test_repeated_resume_calls_execute_write_tool_strictly_once(
                     order_version=1,
                 ),
                 evidence_result_ids=[],
+            ),
+            RoutingDecision(
+                intent=Intent.HIGH_RISK,
+                next_agent="finalize",
+                confidence=0.95,
+                escalate=False,
+                reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+            ),
+            FinalResponse(
+                resolution_mode=ResolutionMode.AUTOMATED,
+                final_response="The refund completed successfully.",
             ),
         ]
     )

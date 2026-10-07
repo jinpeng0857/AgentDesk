@@ -38,7 +38,7 @@ from backend.integrations.tool_adapters import (
     SqlServiceRepository,
     SqlUserRepository,
 )
-from tests.fakes.tools import RecordingKnowledgeStore, knowledge_result
+from tests.support.fakes.tools import RecordingKnowledgeStore, knowledge_result
 from tools.schemas import ProcessRefundArgs, ProcessRefundResult, WriteResultStatus
 
 AUTH_ACTOR = ActorContext(

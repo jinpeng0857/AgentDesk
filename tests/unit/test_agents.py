@@ -21,7 +21,7 @@ from agents.schemas import (
     TicketStatus,
 )
 from agents.supervisor import finalize_ticket, run_supervisor
-from tests.fakes.model_client import FakeModelClient
+from tests.support.fakes.model_client import FakeModelClient
 from tools.registry import TOOL_REGISTRY
 from tools.schemas import CheckServiceArgs, CreateTicketArgs, QueryUserArgs, WriteToolName
 
@@ -40,6 +40,7 @@ def ticket_state(**overrides: object) -> TicketState:
         "intent": None,
         "routing_decision": None,
         "knowledge_refs": [],
+        "action_proposal": None,
         "pending_operation": None,
         "tool_results": [],
         "risk_decision": None,
@@ -233,7 +234,7 @@ async def test_knowledge_falls_back_when_the_tool_returned_nothing() -> None:
 # --------------------------------------------------------------------------
 
 
-async def test_action_receives_only_phase1_read_tools() -> None:
+async def test_action_receives_only_its_whitelisted_tool_schemas() -> None:
     proposal = ActionProposal(
         tool_name="check_service",
         arguments=CheckServiceArgs(service_name="vpn"),
@@ -250,10 +251,11 @@ async def test_action_receives_only_phase1_read_tools() -> None:
 
     content = fake.calls[0].messages[-1].content
     assert "check_service" in content
-    assert "process_refund" not in content
-    assert "reset_password" not in content
-    assert "create_ticket" not in content
-    assert "request_access" not in content
+    assert "process_refund" in content
+    assert "reset_password" in content
+    assert "create_ticket" in content
+    assert "request_access" in content
+    assert "search_knowledge" not in content
 
 
 async def test_action_returns_the_model_proposal_unchanged() -> None:

@@ -130,8 +130,28 @@ describe('EvalDashboardView', () => {
     expect(wrapper.findAll('.gate-pass').length).toBeGreaterThanOrEqual(6)
 
     // 6. Verify rigor disclaimer
-    expect(wrapper.text()).toContain('工程规范与评测口径说明')
+    expect(wrapper.text()).toContain('评测口径说明')
     expect(wrapper.text()).toContain('纯函数确定性计算')
+  })
+
+  it('does not pass baseline-dependent, missing, or unknown metrics without comparison evidence', async () => {
+    const fakeClient = {
+      listEvalRuns: vi.fn().mockResolvedValue([sampleSummary]),
+      getEvalRun: vi.fn().mockResolvedValue({ ...sampleDetail, mode: 'offline', metrics: [
+        { name: 'latency_p95_ms', value: '1420', unit: 'ms' },
+        { name: 'trajectory_efficiency', value: '1', unit: 'ratio' },
+        { name: 'high_risk_bypass_count', value: '', unit: 'count' },
+        { name: 'custom_metric', value: '1', unit: 'ratio' },
+      ] }),
+    }
+    ;(useAuthStore() as unknown as { apiClient: unknown }).apiClient = fakeClient
+    const wrapper = mount(EvalDashboardView)
+    await flushPromises()
+    expect(wrapper.findAll('.gate-pass')).toHaveLength(0)
+    expect(wrapper.findAll('.gate-unknown')).toHaveLength(4)
+    expect(wrapper.find('[data-metric="high_risk_bypass_count"]').text()).toContain('未测')
+    expect(wrapper.text()).toContain('不代表真实模型或 Prompt 质量')
+    expect(wrapper.text()).toContain('样本分母和对照基线')
   })
 
   it('displays error message when eval runs fail to fetch', async () => {
@@ -158,6 +178,6 @@ describe('EvalDashboardView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('PostgreSQL connection failed')
-    expect(wrapper.text()).toContain('No evaluation runs recorded in PostgreSQL')
+    expect(wrapper.text()).toContain('数据库中暂无评估记录')
   })
 })

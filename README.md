@@ -2,371 +2,174 @@
 
 **Reliable Multi-Agent Workflow Automation for IT Service Desk**
 
-AgentDesk 是一个作品集级生产化项目：使用模拟企业数据实现工单分类、知识检索、受治理工具执行、人工审批、断点恢复和可追溯评估。
+AgentDesk 是一个基于模拟企业 IT 工单数据的 Agent 工作流项目，覆盖工单分类、知识检索、工具治理、人工审批、断点恢复和评估。它展示的是边界清晰、可测试、可追溯的工程实现，不是接入真实企业系统的产品。
 
-> 设计文档版本：v2.0
-> 软件版本：0.3.0 / release-candidate
-> 当前状态：Phase 1 只读纵切、Phase 2 工具治理/HITL 与 Phase 3 评估体系/前端大盘/容器化全量通过（Gate A, Gate B & Gate C All Passed）
+> 设计依据：[`docs/architecture.md`](docs/architecture.md) v2.0
+> 开发约束：[`AGENTS.md`](AGENTS.md)
+> 当前验收记录：[`docs/acceptance/current.md`](docs/acceptance/current.md)
+> 项目表达与证据边界：[`PORTFOLIO.md`](PORTFOLIO.md)
 
-项目介于一次性 Demo 与真实企业产品之间。核心链路必须真实可运行、可测试、可恢复、可审计和可部署，但不实现完整 RBAC、多租户、真实企业接口或高可用集群。
+## 当前状态
 
----
+本轮正在完成源码与工件重整、缺陷修复和重新验收。当前/历史验收结论以 [`docs/acceptance/current.md`](docs/acceptance/current.md) 的命令、环境、退出码和工件为准；本 README 描述项目结构与可复现入口，不把设计门槛或旧计划勾选项写成实测成果。
 
-## 为什么值得做
+旧版 L3、Phase 1、Phase 2 评估文件保留在 `artifacts/evaluation/history/`。其中离线 Fake 只验证 harness；旧版“E2E”轨迹和指标由预期标签补齐，不是图执行结果，也不能充当模型质量基线。新的真实候选写入 `artifacts/evaluation/candidates/`，须人工审阅，评估器不会自动晋升官方基线。
 
-它重点展示四种工程能力：
+## 系统边界
 
-| 能力 | 展示内容 |
-|---|---|
-| Agent Orchestration | 四个职责隔离角色、确定性 Dispatcher、状态所有权、最大步数 |
-| Tool Governance | Schema、白名单、Policy、审批、幂等账本、重试、熔断、审计 |
-| Human-in-the-loop | 高风险操作提案、interrupt、持久化审批、resume、重复恢复保护 |
-| Evaluation | 人工 Golden Cases、离线/Live Eval、基线、CI 门禁、可追溯报告 |
+### 解决的问题与适用范围
 
-这里的多 Agent 来自权限边界，而不是角色数量：
+AgentDesk 面向模拟 IT 服务台：将自然语言请求交给职责固定的工作流处理，减少人工分类、知识查找和状态跟进的重复工作；当请求涉及写操作时，通过代码权限、风险规则和人工审批控制执行。作品集演示应同时呈现处理结果、知识依据、操作边界与审计轨迹。
 
-- Supervisor 理解工单，但永远不能调用工具；
-- Knowledge 只能检索并返回可回查引用；
-- Action 可以提出和执行白名单工具；
-- Policy 使用确定性规则做最终授权和风险判断。
+### 用户能够发起的任务
 
----
+以下是当前代码实现的范围，不代表全部真实模型流程已完成端到端验收。
 
-## 系统形态
-
-```text
-Vue 3 / Nginx
-       ↓
-FastAPI API ── PostgreSQL
-       │          工单、审批、审计、幂等账本、checkpoint
-       ↓
-Redis / ARQ Queue
-       ↓
-Worker / LangGraph
-  ├── Supervisor
-  ├── Knowledge ── Chroma
-  ├── Action ───── Governed Tools
-  └── Policy ───── Deterministic Rules
-```
-
-API 只负责认证、校验、写入工单和任务 outbox、查询状态；只有独立 Worker 可以启动或恢复 Agent Graph。
-
-### 高风险写操作
-
-```text
-Action 生成 PendingOperation
-→ Policy 计算风险
-→ high risk: interrupt
-→ approver 审批
-→ Worker resume
-→ 校验 operation_id + args_hash
-→ Action execute
-```
-
-审批前不会调用写 Tool。重复审批、重复 Job 或 Worker 重启由 PostgreSQL 操作账本和稳定幂等键保护。
-
-完整设计见 [docs/architecture.md](docs/architecture.md)，开发硬约束见 [AGENTS.md](AGENTS.md)。
-
----
-
-## 目标技术栈
-
-以下是获批的目标技术栈，不表示当前依赖均已安装：
-
-| 层 | 技术 | 选择依据 |
+| 任务 | 实现能力 | 限制与需要人工介入的条件 |
 |---|---|---|
-| 前端 | Vue 3、TypeScript、Vite、Element Plus、Pinia、Axios | 审批台、Trace 和评估看板需要结构化交互 |
-| API | FastAPI、Pydantic v2 | OpenAPI 契约与严格 DTO |
-| Worker | ARQ、Redis | API/任务进程隔离、异步 OpenAI 调用、定时任务 |
-| Agent Runtime | LangGraph | checkpoint、interrupt/resume、显式状态图 |
-| 数据库 | PostgreSQL、Alembic | 跨进程事务、迁移、审批和幂等事实源 |
-| RAG | Chroma | 小规模 SOP/FAQ/脱敏案例检索 |
-| 模型 | OpenAI-compatible API | 默认可用且供应商可替换 |
-| 可观测 | JSON Logs + 可选 Langfuse | 默认可独立运行，按需导出 Agent Trace |
-| 部署 | Docker Compose + Nginx | 单主机可复现部署 |
-| CI | GitHub Actions | 测试、Schema 漂移和 Eval 门禁 |
+| 知识咨询与网络问题 | 检索已索引的模拟知识库，返回带文档、片段标识的引用与答复 | Knowledge 只读；引用分数是检索排序依据，不是答案可信度；不自主联网搜索或修复真实网络 |
+| 账户、订单和服务查询 | 通过 `query_user`、`query_order`、`check_service` 查询模拟数据 | 账户和订单访问受身份与归属校验限制；服务状态来自模拟接口 |
+| 创建下游工单 | 经 Policy 和网关创建模拟下游工单 | 只能为本人发起；前端提交的入口工单与 `create_ticket` 工具产生的下游工单不同 |
+| 申请资源权限 | 为本人创建权限申请记录 | `request_access` 不直接授予权限；模拟 MVP 中允许的本人申请无需额外人工审批 |
+| 重置密码 | 执行唯一的 `password_reset` Skill，步骤固定，工具调用经过网关 | 仅限本人的活跃账户；敏感结果按契约脱敏与加密，当前工单 API 不提供临时密码展示或真实通知发送 |
+| 处理退款 | 校验本人订单、金额、币种和资源版本后，更新模拟退款记录 | 200.00 USD 及以上属于高风险，先暂停等待人工审批；不连接支付系统，不产生真实资金流转 |
+| 审批与回查 | 审批人通过或拒绝固定操作；用户可查询工单详情、知识引用和执行事件 | 审批绑定 `operation_id + args_hash`，不能编辑参数；过期或重复决定不能绕过后端校验 |
 
----
+### 四个 Agent 的能力与权限
 
-## 当前真实状态
-
-仓库已完成 Phase 0 契约闭合、Phase 1 只读纵切、Phase 2 写操作治理与 HITL、Phase 3 评估体系/前端大盘/全栈容器化的全部交付与全量门禁验收（Gate A / Gate B / Gate C All Passed）。
-
-当前可以验证的内容：
-
-- Git 仓库、开发分支、Python/前端锁文件和完整质量门禁已建立；
-- 四份 Agent contract 与四份 Prompt 已落地并通过校验；
-- 八个 Tool 的 Pydantic v2 模型、Registry、白名单和生成式 JSON Schema 零漂移；
-- FastAPI 暴露 13 个接口契约全部实装，OpenAPI 与前端 TypeScript 类型均由代码生成；
-- `eval/golden_dataset.json` 包含 80 条已人工审核标签的完整评估样本（5 类意图各 16 条）；
-- Docker Compose 提供 PostgreSQL、Redis、API、Worker 与 Frontend (Nginx SPA) 服务，容器健康检查拓扑就绪；
-- PostgreSQL 业务表、LangGraph checkpoint 表、操作账本与审批表均由 Alembic 从空库构建；
-- `/api/auth/login`、`/api/auth/me` 与 `POST /api/tickets`：Argon2id + JWT 认证、事务写入工单与 outbox、返回 HTTP 202；
-- `GET /api/tickets`、`GET /api/tickets/{ticket_id}` 与 `GET /api/tickets/{ticket_id}/trace`：数据隔离、五字段引用卡片、脱敏 Trace 时间线；
-- `GET /api/approvals`、`GET /api/approvals/{approval_id}` 与 `POST /api/approvals/{approval_id}/decision`：绑定 operation_id 与 args_hash、乐观锁版本控制、批准后 resume 恢复；
-- `GET /api/eval/runs` 与 `GET /api/eval/runs/{run_id}`：支持离线与在线 Eval 运行记录持久化与报告查询；
-- ARQ 使用严格 JSON 载荷与确定性作业 ID，API 不运行 Agent 图；
-- Worker 独占运行 LangGraph 图：PostgreSQL checkpointer 实现确定性恢复，故障重启后不重复执行已完成步骤且终态短路；
-- 四个 Agent 角色固定，Supervisor 零 Tool 权限，写操作必须经由统一治理网关（Schema → 白名单 → Policy → 账本幂等/锁 → 超时重试 → 脱敏审计）；
-- 纯函数确定性 Policy 风险矩阵，退款超额硬性要求人工审批；
-- 唯一 Skill `password_reset` 固定流程并包含确定性错误兜底；
-- Vue 3 交付 Login、Tickets、Approvals、TraceViewer、EvalDashboard 五大页面，严格区分“设计门槛”与“本次结果”；
-- 8 类确定性失败模式（F-01～F-08）在 `tests/test_failure_modes.py` 全覆盖；
-- 终版评估工件 `eval/artifacts/l3-live-final.json` 与验收报告 `docs/evidence/l3/final-acceptance.md` 固化归档。
-
-### Phase 0 状态
-
-| 任务 | 状态 |
-|---|---|
-| 需求分析与 v2 架构决策 | 完成 |
-| Agent contracts 与 Prompt | 完成 |
-| 八个 Tool Schema 与白名单 | 完成 |
-| OpenAPI 草案与前端生成类型 | 完成 |
-| 20 条人工审核 Golden Cases | 完成 |
-| 依赖、锁文件与基础设施 Compose | 完成 |
-| 主文档同步 | 完成 |
-| 最终验收门禁 | 完成 |
-
-### Phase 1 状态
-
-| 任务 | 状态 |
-|---|---|
-| 持久化基础、ORM 与 Alembic 迁移 | 完成 |
-| Argon2 + JWT 认证与真实 Auth API | 完成 |
-| JSON ARQ 队列、事务 outbox 与 HTTP 202 | 完成 |
-| OpenAI-compatible 模型适配层与确定性 Fake | 完成 |
-| 只读 Agent / Tool / 治理网关 / 八个 Adapter | 完成 |
-| LangGraph 运行时与 Worker 恢复 | 完成 |
-| 工单查询与 Trace API | 完成 |
-| Vue 最小切片、CI 与 Phase 1 验收 | 完成 |
-| live 模型前后对比门禁 | 完成（`phase1-before.json` vs `phase1-after.json`） |
-
-### Phase 2 状态
-
-| 任务 | 状态 |
-|---|---|
-| 数据库操作账本、审批表与退款/权限业务表迁移 | 完成 |
-| 纯函数 Policy 风险评估与退款阈值控制 | 完成 |
-| 统一 Tool 执行网关、白名单、账本幂等与审计 | 完成 |
-| 四个写 Tool 实现与 Password Reset Skill | 完成 |
-| 审批数据仓储与审批 API（乐观锁/TTL） | 完成 |
-| LangGraph 写分支、interrupt 挂起与 resume 恢复 | 完成 |
-| 前端 Approvals 审批管理页面 | 完成 |
-| F-01~F-08 确定性失败注入测试与容灾演练 | 完成 |
-| Gate B 治理门禁与对比评测产物 | 完成（`phase2-after.json`） |
-
-### Phase 3 状态
-
-| 任务 | 状态 |
-|---|---|
-| 80-Case 完整 Golden Dataset 人工审核 | 完成 |
-| 确定性评估指标引擎与 13 项门槛判定 | 完成 |
-| Eval API、官方基线固化与运行器升级 | 完成 |
-| 前端 TraceViewer 轨迹审计页面 | 完成 |
-| 前端 EvalDashboard 质量看板 | 完成 |
-| TraceExporter 协议与可选 Langfuse 适配器 | 完成 |
-| 前端 Multi-Stage 容器化与 Compose 全栈拓扑 | 完成 |
-| 自动化巡检与灾备演练脚本 | 完成 |
-| 终版评测工件、Demo 脚本与 Gate C 最终验收 | 完成（`l3-live-final.json` / `final-acceptance.md`） |
-
----
-
-## 计划中的业务能力
-
-### Intent
-
-```text
-network
-account
-permission
-query
-high_risk
-```
-
-### Tool
-
-| Tool | 类型 | 用途 |
+| 角色 | 能做什么 | 代码权限边界 |
 |---|---|---|
-| `search_knowledge` | read | 检索 SOP、FAQ 和脱敏历史案例 |
-| `query_user` | read | 查询模拟账号 |
-| `query_order` | read | 查询模拟订单 |
-| `check_service` | read | 查询模拟服务状态 |
-| `create_ticket` | write | 创建模拟下游跟进工单 |
-| `request_access` | write | 创建权限申请，不直接授权 |
-| `reset_password` | write | 重置本人模拟账号密码 |
-| `process_refund` | write | 模拟退款，高金额必须审批 |
+| Supervisor | 对 network、account、permission、query、high_risk 五类意图进行分类，建议下一角色并汇总结果 | 不调用任何工具；建议必须经过 Dispatcher 校验，不能决定基础设施权限 |
+| Knowledge | 调用 `search_knowledge` 检索并追加可回查引用 | 只有一个只读工具权限；不能写业务数据或执行 Action 工具 |
+| Action | 提出操作，或调用白名单内的账户、订单、服务及写工具；可以选择固定的密码重置 Skill | 写提案必须先经过 Policy；执行只允许走统一网关，不能绕过审批、幂等与审计 |
+| Policy | 用确定性规则检查授权与风险，决定允许、拒绝或需要审批 | 没有工具权限；最终判定不依赖 LLM，不执行写副作用 |
 
-`delete_user` 不注册为生产 Tool。未知或越权 Tool 由治理网关拒绝并审计。
-
----
-
-## API 契约
-
-下表中的路由和请求/响应模型都来自 OpenAPI。状态含义：`已实现` 表示端点在运行时真实访问数据库或基础设施；`501` 表示它稳定返回 `NOT_IMPLEMENTED` 契约错误，不代表功能已具备。
-
-| 方法 | 路径 | 说明 | 状态 |
-|---|---|---|---|
-| POST | `/api/auth/login` | Argon2 校验后签发 JWT | 已实现 |
-| GET | `/api/auth/me` | 当前身份，校验 JWT 与账号状态 | 已实现 |
-| POST | `/api/tickets` | 单事务写入工单与 outbox，返回 HTTP 202 | 已实现 |
-| GET | `/api/tickets` | 当前用户工单列表 | 已实现 |
-| GET | `/api/tickets/{ticket_id}` | 查询状态与结果 | 已实现 |
-| GET | `/api/tickets/{ticket_id}/trace` | 查询脱敏轨迹 | 已实现 |
-| GET | `/api/approvals` | approver 的待审批列表 | 已实现 |
-| GET | `/api/approvals/{approval_id}` | 审批详情 | 已实现 |
-| POST | `/api/approvals/{approval_id}/decision` | approve/reject，带乐观锁版本 | 已实现 |
-| GET | `/api/eval/runs` | Eval 历史 | 已实现 |
-| GET | `/api/eval/runs/{run_id}` | 单次 Eval 报告 | 已实现 |
-| GET | `/health` | 进程存活 | 已实现 |
-| GET | `/ready` | PostgreSQL/Redis/配置就绪 | 已实现，依赖未就绪时 503 |
-
-OpenAPI 是前后端接口唯一来源。前端类型通过 `openapi-typescript` 生成，不手写 DTO。
-
----
-
-## 交付页面
-
-| 路由 | 页面 | 功能 | 状态 |
-|---|---|---|---|
-| `/login` | Login | 选择/登录模拟身份 | 已交付 |
-| `/tickets` | TicketSubmit | 创建、列表、轮询、最终结果 | 已交付 |
-| `/approvals` | Approval | 查看绑定操作并 approve/reject | 已交付 |
-| `/traces/:ticketId` | TraceViewer | Agent、Tool、审批和失败时间线 | 已交付 |
-| `/eval` | EvalDashboard | 门槛、基线、运行历史和对比 | 已交付 |
-
-使用轮询，不实现 WebSocket。
-
----
-
-## 配置约定
-
-仓库已提供 `.env.example`，列出以下配置项；复制后必须替换占位密钥：
+### 运行、停止与恢复的边界
 
 ```text
-APP_ENV
-DATABASE_URL
-REDIS_URL
-JWT_SECRET
-APP_ENCRYPTION_KEY
-OPENAI_API_KEY
-OPENAI_BASE_URL
-OPENAI_MODEL
-OPENAI_TIMEOUT_S
-OPENAI_MAX_RETRIES
-CHROMA_PATH
-LANGFUSE_HOST
-LANGFUSE_PUBLIC_KEY
-LANGFUSE_SECRET_KEY
+Browser → Vue/Nginx → FastAPI → PostgreSQL + Redis/ARQ → Worker/LangGraph
+                                                            ├─ Supervisor
+                                                            ├─ Knowledge → governed read tools → Chroma
+                                                            ├─ Action → governed tools
+                                                            └─ Policy → deterministic rules + Approval
 ```
 
-Langfuse 配置为可选项。任何密钥、Token 和临时口令都不能进入 Git、日志、审计或 Trace。
+- 只允许 Supervisor、Knowledge、Action、Policy 四个逻辑角色；Supervisor 没有工具权限。
+- API 负责认证、校验、持久化、排队和查询；只有 Worker 启动或恢复 Agent 图。
+- 写 Tool 统一经过 Schema、白名单、Policy/Approval、幂等账本、执行和脱敏审计。
+- 高风险写操作先挂起等待审批，审批绑定 `operation_id` 与 `args_hash`。
+- PostgreSQL 是工单、审批、审计、操作账本和 checkpoint 的持久化事实源；Redis 用于队列、锁和短期缓存。
+- Policy 最终授权和风险判定由确定性代码完成，不能交给 LLM。
 
----
+Dispatcher 最多允许 15 步；超出上限、非法转移和无法安全完成的关键操作会停止自动流程并进入明确状态。高风险写操作在审批前保持暂停；审批恢复继续原工单。PostgreSQL checkpoint 与操作账本承担恢复和防重复副作用的持久化职责，实际可靠性须以对应故障测试和运行证据确认。
 
-## 快速开始
+### 当前证据与界面表达
 
-### 当前阶段
+截至 2026-10-06 的本次代码盘点，仓库引用的 `docs/acceptance/current.md` 尚不存在，因此不能宣布完整验收通过。模型分类成绩、离线 Fake、真实图运行和全栈演示需要各自对应的证据。前端评估接口目前提供模式、模型、版本和指标，但不提供 stage、样本分母或对照基线；UI 只对已知固定门槛作数值比较，基线相关指标显示“未判定”，不自动将候选晋升为官方结果。
 
-当前可运行契约校验、PostgreSQL/Redis 基础设施，以及认证与工单提交的只读纵切基础；包含 Agent 图与前端在内的完整应用尚不可启动。请先阅读：
+UI 覆盖登录、工单、人工审批、执行轨迹与评估记录五个页面。顶部可展开能力边界，页面始终注明模拟环境。审批入口仅对审批人开放，Token 只保留在内存；刷新页面后需要重新登录。界面改版决策见 [`docs/plans/2026-10-06-ui-redesign.md`](docs/plans/2026-10-06-ui-redesign.md)。
 
-1. [AGENTS.md](AGENTS.md)：开发契约；
-2. [docs/architecture.md](docs/architecture.md)：完整设计；
-3. [specs/README.md](specs/README.md)：机器契约索引；
-4. [PORTFOLIO.md](PORTFOLIO.md)：证据与简历纪律。
+本轮范围沿用作品集级模拟系统的边界：固定四个 Agent、一个 Skill、注册的八个工具。真实企业接口、支付、完整 RBAC、多租户、额外 Agent／Skill、WebSocket 和部署架构扩张不在本轮范围内。
 
-### 契约检查（不需要基础设施）
+## 目录
+
+| 路径 | 内容 |
+|---|---|
+| `src/{agents,tools,skills,backend,eval}/` | Python 包源码；安装后的 import 名保持不变 |
+| `resources/prompts/` | 四个 Agent 的 Prompt |
+| `resources/evaluation/golden_dataset.json` | 固定 80 条人工审核样例 |
+| `tests/unit/`、`tests/integration/` | 单元与真实 PostgreSQL/Redis 集成测试 |
+| `tests/acceptance/failure_modes/` | F-01a/b、F-02～F-08 确定性失败验收 |
+| `tests/support/fakes/` | 离线测试替身 |
+| `specs/acceptance/test_matrix.yaml` | 验收 ID、测试节点、命令、依赖和证据登记 |
+| `scripts/maintenance/` | Schema、OpenAPI、Agent contract、数据集和矩阵校验 |
+| `scripts/acceptance/` | 全栈 Smoke、恢复及真实备份/恢复演练 |
+| `artifacts/evaluation/history/` | 历史记录和离线 Fake 基线 |
+| `artifacts/evaluation/candidates/` | 新模型基线与完整图候选工件 |
+| `docs/acceptance/` | 当前验收报告及历史 L3 日志 |
+| `frontend/`、`alembic/`、`specs/` | 前端、数据库迁移和机器契约 |
+
+## 本地验证
+
+需要 Python 3.11+、`uv`、Node.js 22.22.2（版本见根目录 `.nvmrc`）和 Docker Compose。后端单测不需要运行模型；集成/失败验收需要可访问的 PostgreSQL 和 Redis。
 
 ```powershell
-uv sync --all-groups
-uv run ruff check agents tools skills backend eval scripts tests
-uv run mypy agents tools backend eval scripts
-uv run python scripts/export_tool_schemas.py --check
-uv run python scripts/export_openapi.py --check
-uv run python scripts/validate_agent_contracts.py
-uv run python scripts/validate_golden_dataset.py
+uv sync --all-extras --dev
+uv run ruff check src tests scripts
+uv run mypy src/agents src/tools src/skills src/backend src/eval scripts
+uv run python scripts/maintenance/export_tool_schemas.py --check
+uv run python scripts/maintenance/export_openapi.py --check
+uv run python scripts/maintenance/validate_agent_contracts.py
+uv run python scripts/maintenance/validate_golden_dataset.py
+uv run python scripts/maintenance/validate_test_matrix.py
+```
 
+集成与失败验收只操作隔离的 `*_test` 数据库，集成 fixture 会重建指定的 `agentdesk_test`：
+
+```powershell
+docker compose up -d postgres redis
+$env:TEST_DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_test"
+$env:REDIS_URL = "redis://127.0.0.1:6379/15"
+uv run pytest tests/unit tests/integration tests/acceptance -q
+```
+
+前端使用固定 Node 版本：
+
+```powershell
 Set-Location frontend
 npm ci
-npm run generate:api-types
+npm run lint
 npm run type-check
-Set-Location ..
+npm run test
+npm run build
 ```
 
-### Phase 1 集成验证（需要真实 PostgreSQL 与 Redis）
+## Ollama 评估
+
+默认候选模型是 `qwen3:8b`。两个阶段回答不同问题，不能把分类成绩当成端到端成绩：
 
 ```powershell
-docker compose up -d postgres redis
-$env:DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@localhost:5432/agentdesk"
-uv run alembic upgrade head
-uv run python scripts/seed_demo_data.py --reset-demo-data
-uv run pytest tests -q
+ollama pull qwen3:8b
+uv run python -m eval.run_eval --mode live --stage model-baseline `
+  --model qwen3:8b --base-url http://localhost:11434/v1 --api-key ollama `
+  --output artifacts/evaluation/candidates/qwen3-8b-model-baseline.local.json
 ```
 
-这些命令验证空库迁移、Argon2+JWT 认证、单事务 outbox 与 HTTP 202、只读执行网关的零写保证，以及 Chroma 引用的五个必需字段。**它们不验证 Agent 图执行**，因为 LangGraph 运行时尚未实现。
-
-### 只读评估冒烟（不需要凭据，产物不入库）
+完整图候选需使用独立的 PostgreSQL `*_test` 数据库，并让全部 80 条固定样例逐条经过真实模型、图、工具网关与 checkpoint：
 
 ```powershell
-uv run python eval/run_eval.py --mode offline --stage model-baseline `
-  --output eval/artifacts/phase1-offline-smoke.local.json
+$env:EVAL_TEST_DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_eval_test"
+uv run python -m eval.run_eval --mode live --stage e2e-candidate `
+  --model qwen3:8b --base-url http://localhost:11434/v1 --api-key ollama `
+  --database-url $env:EVAL_TEST_DATABASE_URL `
+  --output artifacts/evaluation/candidates/qwen3-8b-e2e-candidate.local.json
 ```
 
-离线模式使用确定性替身，只证明评测外壳本身可用，不证明 Prompt 或模型质量。`--mode live` 需要 OpenAI-compatible 凭据，并且拒绝在工作区不干净的提交上运行。
+E2E 观测值来自实际图状态、数据库投影和审计；expected labels 只在运行完成后用于计分。门槛见 `AGENTS.md` §7.2；轨迹效率和 P95 只有与相同数据集、stage、模型及 endpoint 的真实候选比较才有意义。Live artifact 标记工作树状态和变更摘要。`--update-baseline` 仍只生成待审阅副本，不会改写官方基线。
 
-启动当前基础设施：
+离线 Fake 入口：
 
 ```powershell
-docker compose up -d postgres redis
-docker compose ps
-docker compose down
+uv run python -m eval.run_eval --mode offline --stage model-baseline `
+  --output artifacts/evaluation/candidates/offline-harness.local.json
 ```
 
-### 完整应用目标
+它验证 Prompt 加载、结构校验和工件输出，不衡量模型或系统质量。
 
-以下命令和地址只有在 Phase 1～3 对应实现完成后才有效，当前不得描述为“已通过”：
+## Compose 全栈
+
+复制 `.env.example` 为 `.env`，填写 JWT/加密密钥与模型配置。连接本机 Ollama 时配置 `OPENAI_BASE_URL=http://host.docker.internal:11434/v1`、`OPENAI_MODEL=qwen3:8b`、`OPENAI_API_KEY=ollama`。
+
+标准服务入口保持 `docker compose`：
 
 ```powershell
 docker compose up --build
 ```
 
-目标地址：Frontend `http://localhost:8080`、API `http://localhost:8000`、OpenAPI `http://localhost:8000/docs`。
+数据迁移不会由应用启动时隐式执行；新环境须先对目标数据库运行 `alembic upgrade head`。全栈 Smoke 和备份恢复演练命令、隔离库约束及最终结果见当前验收报告。
 
----
+## API 与前端
 
-## Evaluation 纪律
+OpenAPI 快照位于 `specs/openapi/openapi.json`，由 `src/backend/` 生成；TypeScript API 类型位于 `frontend/src/types/api.d.ts`，由 `openapi-typescript` 生成。主要接口覆盖登录、工单、审批、Trace、Eval 和 readiness；具体契约以 OpenAPI 为准。
 
-设计门槛不等于项目成绩。完整评估需要至少 80 条人工审核 Golden Cases，并区分：
-
-- Offline Eval：Fake/Recorded Model，验证图、契约和失败路径；
-- Live Eval：真实 OpenAI-compatible 模型，验证 Prompt 和整体质量。
-
-任何对外指标必须来自可追溯 artifact，包含数据集版本、Prompt 版本、模型配置、时间和 Git SHA。当前没有可发布的实测指标。
-
----
-
-## 开发路线
-
-1. **Phase 0 — 契约闭合（完成）**：Agent/Tool/OpenAPI 契约、20 条人工审核 Golden Cases、依赖与基础设施 Compose。
-2. **Phase 1 — 基础纵切（完成，Gate A Passed）**：JWT、PostgreSQL、Redis/ARQ、模型适配、只读 Agent 路径、基础页面。
-3. **Phase 2 — 治理与 HITL（完成，Gate B Passed）**：写 Tool、Policy、幂等账本、审批、interrupt/resume、八类失败模式。
-4. **Phase 3 — 评估与展示（完成，Gate C Passed）**：80 条完整数据集、确定性指标引擎、Live/Offline Eval、Trace/Eval 看板、全栈 Docker 编排与备份恢复演练。
-
-每阶段的详细验收见 [docs/architecture.md §19](docs/architecture.md)。
-
----
-
-## 文档职责
-
-| 文档 | 读者问题 |
-|---|---|
-| [README.md](README.md) | 项目是什么、现在能不能运行、如何开始？ |
-| [AGENTS.md](AGENTS.md) | 改代码时绝不能违反什么？ |
-| [docs/architecture.md](docs/architecture.md) | 系统为什么这样设计，数据如何流动？ |
-| [specs/README.md](specs/README.md) | 哪些机器契约必须与代码一致？ |
-| [PORTFOLIO.md](PORTFOLIO.md) | 目前有哪些成果真的可以写进简历？ |
-
----
-
-## License
-
-当前仓库尚未添加 License。在公开发布或接受外部贡献前必须先明确许可证。
+任何量化结果都必须关联模型、数据集版本、Prompt 版本、运行时间、Git SHA/工作树指纹及逐例工件。未运行、跳过或只通过静态检查的层不得标成 Live/全栈验收通过。

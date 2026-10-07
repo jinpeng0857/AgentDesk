@@ -4,7 +4,7 @@
 >
 > 文档版本：v2.0  
 > 对应设计：`docs/architecture.md` v2.0  
-> 项目状态：作品集级生产化系统，当前仍处于设计与契约落地阶段
+> 项目状态：运行实现已落地；当前验收结论仅以 `docs/acceptance/current.md` 的可追溯证据为准
 
 ---
 
@@ -37,10 +37,10 @@ AgentDesk 是一个模拟企业 IT Service Desk 的多 Agent 工作流系统。�
 
 | 能力 | 代码归属 |
 |---|---|
-| Agent Orchestration | `agents/`、`backend/graph/` |
-| Tool Governance | `tools/`、`backend/governance/` |
-| Human-in-the-loop | `agents/policy.py`、`backend/graph/`、`backend/api/approvals.py` |
-| Evaluation | `eval/`、`.github/workflows/eval.yml` |
+| Agent Orchestration | `src/agents/`、`src/backend/graph/` |
+| Tool Governance | `src/tools/`、`src/backend/governance/` |
+| Human-in-the-loop | `src/agents/policy.py`、`src/backend/graph/`、`src/backend/api/approvals.py` |
+| Evaluation | `src/eval/`、`.github/workflows/eval.yml` |
 
 进程边界：
 
@@ -63,7 +63,7 @@ AgentDesk 是一个模拟企业 IT Service Desk 的多 Agent 工作流系统。�
 
 仅允许 `supervisor`、`knowledge`、`action`、`policy` 四个逻辑角色，不新增 Planner、Critic、Reflection、Memory 等 Agent。
 
-`agents/*.py` 封闭清单：
+`src/agents/*.py` 封闭清单：
 
 ```text
 supervisor.py
@@ -72,6 +72,7 @@ action.py
 policy.py
 schemas.py
 context.py
+idempotency.py
 ```
 
 Supervisor、Knowledge、Action 可以使用模型完成核心职责。Policy 的最终判定必须由确定性规则完成；如需生成面向用户的解释，只能在判定完成后调用统一模型适配层，且模型输出不得覆盖判定字段。
@@ -89,7 +90,7 @@ Supervisor、Knowledge、Action 可以使用模型完成核心职责。Policy �
 ### H-04：路由由确定性 Dispatcher 完成
 
 - Supervisor 可以通过结构化输出建议 `next_agent`。
-- `backend/graph/edges.py` 必须校验允许的转移并执行分支。
+- `src/backend/graph/edges.py` 必须校验允许的转移并执行分支。
 - `edges.py` 内不得调用 LLM，也不得执行 Tool。
 - 非法目标、非法转移或超过 `MAX_STEPS` 必须转入明确终态。
 
@@ -97,7 +98,7 @@ Supervisor、Knowledge、Action 可以使用模型完成核心职责。Policy �
 
 所有 `side_effects == "write"` 的 Tool 必须依次经过：Schema 校验、白名单、Policy/Approval 校验、幂等、超时/重试、执行、脱敏和审计。
 
-- 唯一入口：`backend/governance/executor.py`。
+- 唯一入口：`src/backend/governance/executor.py`。
 - Tool Registry 只暴露 `ToolSpec`，不得把可执行函数直接交给 Agent。
 - 每个逻辑写操作拥有独立且持久化的 `operation_id`。
 - `operation_id` 位于 `PendingOperation`，不得使用一个工单级 ID 代表多个写操作。
@@ -224,7 +225,7 @@ timestamp
 
 ### H-21：失败模式必须有确定性测试
 
-新增或修改失败处理时，必须同步 `tests/test_failure_modes.py`。每个用例必须使用固定调用序列或固定故障点，并断言最终工单状态。
+新增或修改失败处理时，必须同步 `tests/acceptance/failure_modes/` 中对应的 F-01a、F-01b、F-02～F-08 测试模块和 `specs/acceptance/test_matrix.yaml`。每个用例必须使用固定调用序列或固定故障点，并断言最终工单状态、审计记录和副作用次数。
 
 ### H-22：领域层不得反向依赖服务层
 
@@ -234,15 +235,15 @@ timestamp
 backend → agents / tools / skills
 ```
 
-`agents/`、`tools/`、`skills/` 内不得 import `backend.*`、FastAPI、数据库客户端、Redis 客户端或 ARQ。
+`src/agents/`、`src/tools/`、`src/skills/` 内不得 import `backend.*`、FastAPI、数据库客户端、Redis 客户端或 ARQ。
 
-外部能力通过领域层 Protocol 注入。例如 `tools/service.py` 只能依赖 `KnowledgeStore` Protocol，具体 Chroma Adapter 在 `backend/integrations/` 中实现并由执行网关注入。
+外部能力通过领域层 Protocol 注入。例如 `src/tools/service.py` 只能依赖领域 Protocol，具体 Chroma Adapter 在 `src/backend/integrations/` 中实现并由执行网关注入。
 
 ### H-23：模型调用必须经过统一适配层
 
 - 默认协议为 OpenAI-compatible API。
 - Agent 不得直接实例化供应商 SDK 客户端。
-- 统一入口位于 `backend/integrations/model_client.py`。
+- 统一入口位于 `src/backend/integrations/model_client.py`。
 - 测试和离线 CI 必须能注入确定性 `FakeModelClient`。
 
 ### H-24：API 不运行 Agent 图
@@ -278,6 +279,7 @@ FastAPI 只能创建记录并提交 `start_ticket` / `resume_ticket` Job。只�
 | `intent` | `Intent` | Supervisor |
 | `routing_decision` | `RoutingDecision` | Supervisor |
 | `knowledge_refs` | `list[KnowledgeRef]`，只追加 | Knowledge |
+| `action_proposal` | `ActionProposal | None`，只用于只读 Tool 执行 | Action propose 节点 |
 | `pending_operation` | `PendingOperation | None` | Action propose 节点 |
 | `tool_results` | `list[ToolResult]`，只追加 | Action execute 节点 |
 | `risk_decision` | `RiskDecision | None` | Policy |
@@ -287,7 +289,7 @@ FastAPI 只能创建记录并提交 `start_ticket` / `resume_ticket` Job。只�
 | `resolution_mode` | `automated / fallback / human_required` | Supervisor finalizer |
 | `final_response` | `str | None` | Supervisor finalizer |
 
-状态类型由 `backend/graph/state.py` 引用 `agents/schemas.py` 和 `tools/schemas.py` 组成。表外字段不得临时塞入裸字典；需要新增字段时先修改本表、架构和测试。
+状态类型由 `src/backend/graph/state.py` 引用 `src/agents/schemas.py` 和 `src/tools/schemas.py` 组成。表外字段不得临时塞入裸字典；需要新增字段时先修改本表、架构和测试。
 
 当前节点、重试调度信息和 checkpoint id 属于 LangGraph/ARQ 元数据，不进入 `TicketState`。
 
@@ -297,26 +299,27 @@ FastAPI 只能创建记录并提交 `start_ticket` / `resume_ticket` Job。只�
 
 | 改动 | 代码落点 | 必须同步 |
 |---|---|---|
-| Agent 行为 | 既有 `agents/{supervisor,knowledge,action,policy}.py` | Prompt、Agent contract、架构 §7、eval |
-| Agent/图共享模型 | `agents/schemas.py` | `specs/agent_contracts/`、状态所有权、测试 |
-| Agent 外部依赖 Protocol | `agents/context.py` | backend 实现、Agent 测试 Fake |
-| Tool 入参/出参模型 | `tools/schemas.py` | Tool Schema、Registry、测试 |
-| 新 Tool | `tools/<domain>.py` + `tools/registry.py` | Schema 快照、白名单、架构、测试 |
-| Tool 外部依赖 Protocol | `tools/context.py` | backend Adapter、测试 Fake |
-| Tool 执行治理 | `backend/governance/` | 治理测试、失败模式、架构 §9 |
-| 图节点 | `backend/graph/nodes.py` | 状态所有权、路由测试 |
-| 图边/Dispatcher | `backend/graph/edges.py` | `tests/test_routing.py`、架构流程图 |
-| 图构建 | `backend/graph/builder.py` | Checkpointer、集成测试 |
-| Worker Job | `backend/jobs/` | Compose、失败恢复测试、README |
-| PostgreSQL 模型 | `backend/db/models.py` | Alembic migration、API Schema、测试 |
-| Chroma/模型 Adapter | `backend/integrations/` | 对应 Protocol、环境变量、Fake |
-| API 路由 | `backend/api/<domain>.py` | OpenAPI 生成物、前端 API、README |
-| JWT 与身份 | `backend/auth/` | API 依赖、认证测试、安全说明 |
-| Prompt | `prompts/<agent>.yaml` | live eval 前后对比、Agent contract |
-| Password Reset Skill | `skills/password_reset/` | Action 白名单、Skill 测试 |
-| Golden Case | `eval/golden_dataset.json` | 数据集版本、指标覆盖 |
-| 指标 | `eval/metrics.py` | Eval runner、Dashboard、门禁 |
-| 基线 | `eval/baseline.json` | 人工审查的 eval artifact |
+| Agent 行为 | 既有 `src/agents/{supervisor,knowledge,action,policy}.py` | `resources/prompts/`、Agent contract、架构 §7、Live Eval |
+| Agent/图共享模型 | `src/agents/schemas.py` | `specs/agent_contracts/`、状态所有权、测试 |
+| Agent 外部依赖 Protocol | `src/agents/context.py` | `src/backend/` 实现、Agent 测试 Fake |
+| Tool 入参/出参模型 | `src/tools/schemas.py` | Tool Schema、Registry、测试 |
+| 新 Tool | `src/tools/<domain>.py` + `src/tools/registry.py` | Schema 快照、白名单、架构、测试 |
+| Tool 外部依赖 Protocol | `src/tools/context.py` | `src/backend/` Adapter、测试 Fake |
+| Tool 执行治理 | `src/backend/governance/` | 治理测试、失败模式、架构 §9 |
+| 图节点 | `src/backend/graph/nodes.py` | 状态所有权、路由测试 |
+| 图边/Dispatcher | `src/backend/graph/edges.py` | `tests/unit/test_routing.py`、架构流程图 |
+| 图构建 | `src/backend/graph/builder.py` | Checkpointer、集成测试 |
+| Worker Job | `src/backend/jobs/` | Compose、失败恢复测试、README |
+| PostgreSQL 模型 | `src/backend/db/models.py` | Alembic migration、API Schema、测试 |
+| Chroma/模型 Adapter | `src/backend/integrations/` | 对应 Protocol、环境变量、Fake |
+| API 路由 | `src/backend/api/<domain>.py` | OpenAPI 生成物、前端 API、README |
+| JWT 与身份 | `src/backend/auth/` | API 依赖、认证测试、安全说明 |
+| Prompt | `resources/prompts/<agent>.yaml` | Live Eval 前后版本差异、Agent contract |
+| Password Reset Skill | `src/skills/password_reset/` | Action 白名单、Skill 测试 |
+| Golden Case | `resources/evaluation/golden_dataset.json` | 数据集版本、指标覆盖 |
+| 指标 | `src/eval/metrics.py` | Eval runner、Dashboard、门禁 |
+| 候选评估 | `artifacts/evaluation/candidates/` | 人工审阅后单独决定是否晋升 |
+| 历史离线假模型基线 | `artifacts/evaluation/history/offline-fake-baseline.json` | 仅 harness 回归，不作为模型质量基线 |
 | 前端页面 | `frontend/src/views/` | Router、Vitest |
 | 前端 API | `frontend/src/api/` | 生成的 `types/api.d.ts` |
 | CI | `.github/workflows/` | README 状态、门禁规则 |
@@ -338,7 +341,7 @@ FastAPI 只能创建记录并提交 `start_ticket` / `resume_ticket` Job。只�
 - 金额使用 `Decimal`，禁止用浮点数处理退款金额。
 - 枚举使用 `StrEnum` 或 `Literal`，不得散落自由字符串。
 - 常量必须命名：`MAX_STEPS`、退款阈值、超时、重试次数、锁 TTL、审批 TTL。
-- 顶层 `agents/`、`tools/`、`skills/`、`backend/` 使用命名空间包，不创建 `__init__.py`。
+- `src/agents/`、`src/tools/`、`src/skills/`、`src/backend/` 使用命名空间包，不创建 `__init__.py`；安装后的导入名仍是 `agents`、`tools`、`skills`、`backend`。
 
 ### 4.2 TypeScript / Vue
 
@@ -404,7 +407,7 @@ Prompt 版本必须进入 Trace 和 eval artifact。Prompt 不得包含密钥、
 
 ### 6.3 失败模式测试
 
-`tests/test_failure_modes.py` 至少覆盖：
+`tests/acceptance/failure_modes/` 至少覆盖：
 
 | 编号 | 故障 | 期望结果 |
 |---|---|---|
@@ -422,7 +425,7 @@ Prompt 版本必须进入 Trace 和 eval artifact。Prompt 不得包含密钥、
 
 ### 6.4 测试替身
 
-- 单元测试使用 `tests/fakes/` 中的 Fake Model、Fake Redis、Fake Knowledge Store 和内存账本。
+- 单元测试使用 `tests/support/fakes/` 中的 Fake Model、Fake Redis、Fake Knowledge Store 和内存账本。
 - 集成测试使用 CI service containers 中的真实 PostgreSQL/Redis；不得把集成行为全替换成 mock。
 - 故障注入按“第 N 次调用失败”等确定序列实现，禁止概率故障。
 
@@ -466,9 +469,9 @@ Recorded Model 不能证明 Prompt 质量；涉及 Prompt、Agent、Tool、Polic
 
 ### 7.4 基线
 
-- 普通 CI 只读 `eval/baseline.json`，不得自动更新。
-- 只有显式 `run_eval --update-baseline` 才能生成候选基线。
-- 基线修改必须人工审查并与原始 eval artifact 一起提交。
+- `artifacts/evaluation/history/offline-fake-baseline.json` 仅供确定性 harness 回归，不能作为真实模型质量、轨迹效率或延迟基线。
+- Live Eval 只写入 `artifacts/evaluation/candidates/`；普通 CI 不生成、不晋升官方模型基线。
+- 候选结果需由人工审阅，并与原始逐例 artifact 一起提交；晋升决策不能由运行器自动完成。
 
 ---
 
@@ -486,7 +489,7 @@ Recorded Model 不能证明 Prompt 质量；涉及 Prompt、Agent、Tool、Polic
 | Worker Job | Compose、重试测试、README 服务说明 |
 | Prompt | Contract、Prompt 版本、live eval 前后对比 |
 | Eval 指标 | Runner、Baseline Schema、Dashboard、本文门禁 |
-| 失败模式 | `test_failure_modes.py`、架构失败矩阵 |
+| 失败模式 | `tests/acceptance/failure_modes/`、`specs/acceptance/test_matrix.yaml`、架构失败矩阵 |
 | 依赖 | `pyproject.toml`/`package.json`、lockfile、README |
 | 主文档 | 相关交叉链接和版本号 |
 
@@ -497,12 +500,12 @@ Recorded Model 不能证明 Prompt 质量；涉及 Prompt、Agent、Tool、Polic
 目标状态下，从仓库根执行：
 
 ```powershell
-ruff check agents tools skills backend eval tests
-mypy agents tools skills backend eval
-pytest tests -q
+uv run ruff check src tests scripts
+uv run mypy src/agents src/tools src/skills src/backend src/eval scripts
+uv run pytest tests/unit tests/integration tests/acceptance -q
 
 Set-Location frontend
-npm ci
+npm ci  # Node.js 22.22.2
 npm run lint
 npm run type-check
 npm run test
@@ -513,9 +516,13 @@ npm run build
 
 ```powershell
 docker compose up -d postgres redis
-alembic upgrade head
-pytest tests/integration -q
-python eval/run_eval.py --mode offline
+$env:DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_test"
+uv run alembic upgrade head
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+$env:REDIS_URL = "redis://127.0.0.1:6379/15"
+uv run pytest tests/integration -q
+uv run python scripts/maintenance/validate_test_matrix.py
+uv run python -m eval.run_eval --mode offline --stage model-baseline
 ```
 
 完整服务：
@@ -523,6 +530,11 @@ python eval/run_eval.py --mode offline
 ```powershell
 docker compose up --build
 ```
+
+Live full-graph acceptance requires Ollama, PostgreSQL, and a dedicated database
+whose name ends in `_test`; it must execute the full reviewed 80-case dataset.
+Write the result to `artifacts/evaluation/candidates/`. Never promote a candidate
+to a quality baseline automatically.
 
 在当前代码尚未实现对应入口时，不得把这些命令的预期结果描述为“已通过”。
 

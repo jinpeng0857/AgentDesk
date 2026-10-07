@@ -15,6 +15,7 @@ allowed_tools:
   - reset_password
   - process_refund
 state_writes:
+  - action_proposal
   - pending_operation
   - tool_results
 invariants:

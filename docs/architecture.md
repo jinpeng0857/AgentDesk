@@ -4,7 +4,7 @@
 >
 > 设计版本：v2.0
 > 目标形态：作品集级生产化系统
-> 当前状态：Phase 1、Phase 2 与 Phase 3 全量通过验收（Gate A / Gate B / Gate C All Passed）
+> 当前状态：代码包含 API、Worker、Agent Graph、工具治理与前端实现；各层验收状态以 [`docs/acceptance/current.md`](acceptance/current.md) 的本轮证据为准，历史报告不作当前通过证明。
 > 上级开发约束：[`AGENTS.md`](../AGENTS.md)
 
 ---
@@ -225,8 +225,9 @@ Supervisor classify
 
 同一个 Action Agent 在图中可以有两个节点包装，但不是两个 Agent：
 
-- `action_propose`：模型选择一个允许 Tool，并产生结构化参数。读取 Tool 可直接进入网关；写 Tool 只生成 `PendingOperation`。
-- `action_execute`：只消费已经通过 Policy、且必要时通过审批的 `PendingOperation`。它不得再次让模型修改工具名或参数。
+- `action_propose`：模型选择一个允许 Tool，并产生结构化参数。读取 Tool 保存为 `action_proposal` 并直接进入网关；写 Tool 只生成 `PendingOperation`。
+- `action_execute`：读取 Tool 消费 `action_proposal`；写 Tool 只消费已经通过 Policy、且必要时通过审批的 `PendingOperation`。它不得再次让模型修改工具名或参数。
+- 成功的 Action 与 Knowledge 结果必须返回 Supervisor；Supervisor 依据已脱敏的执行结果选择下一业务角色或 finalize。最终响应只能在 Supervisor 明确选择 finalize 后生成。
 
 ### 5.3 写操作审批不变量
 
@@ -239,7 +240,7 @@ approved.args_hash == sha256(canonical_json(validated_args))
 
 ### 5.4 Dispatcher
 
-Dispatcher 位于 `backend/graph/edges.py`，只做确定性工作：
+Dispatcher 源码位于 `src/backend/graph/edges.py`（Python 导入名保持 `backend.graph.edges`），只做确定性工作：
 
 - 校验 `next_agent` 是否属于允许集合；
 - 校验当前节点到目标节点的转移是否合法；
@@ -302,6 +303,7 @@ class TicketState(TypedDict):
     intent: Intent | None
     routing_decision: RoutingDecision | None
     knowledge_refs: list[KnowledgeRef]
+    action_proposal: ActionProposal | None
     pending_operation: PendingOperation | None
     tool_results: list[ToolResult]
     risk_decision: RiskDecision | None
@@ -425,9 +427,9 @@ API 不直接把 checkpoint 暴露给前端。`tickets` 表保存可查询 proje
 
 - 从白名单中选择一个业务 Tool；
 - 产生符合对应参数模型的参数；
-- 读取操作经网关立即执行；
+- 读取操作生成 `action_proposal`，经网关执行后由 Supervisor 汇总；
 - 写操作生成 `PendingOperation`；
-- 在批准后消费 ToolResult，并把业务结果交给 Supervisor。
+- 在批准后消费 `PendingOperation` 并执行；成功的 ToolResult 由 Supervisor 汇总。
 
 边界：
 
@@ -473,7 +475,7 @@ Policy 默认使用确定性模板生成 explanation。若后续启用模型润�
 
 ### 8.1 ModelClient
 
-领域 Protocol 位于 `agents/context.py`，OpenAI-compatible 实现位于 `backend/integrations/model_client.py`：
+领域 Protocol 源码位于 `src/agents/context.py`，OpenAI-compatible 实现位于 `src/backend/integrations/model_client.py`（Python 导入名保持不变）：
 
 ```python
 class ModelClient(Protocol):
@@ -607,7 +609,7 @@ TicketService
 AccessRequestService
 ```
 
-模拟实现可以位于 `tools/`；Chroma、PostgreSQL 等基础设施实现位于 `backend/integrations/`。执行网关创建 `ToolContext` 并注入，`tools/` 永不 import `backend`。
+模拟实现可以位于 `src/tools/`；Chroma、PostgreSQL 等基础设施实现位于 `src/backend/integrations/`。执行网关创建 `ToolContext` 并注入，领域包通过原有模块名导入且永不 import `backend`。
 
 ### 9.5 执行管线
 
@@ -677,7 +679,7 @@ Chroma 保存：
 - 脱敏历史工单及解决方案；
 - document/chunk metadata。
 
-Knowledge Store Adapter 位于 `backend/integrations/chroma_store.py`，实现 `tools/context.py` 中的 Protocol。只有 `search_knowledge` Tool 可以访问它。
+Knowledge Store Adapter 源码位于 `src/backend/integrations/knowledge_store.py`，实现 `src/tools/context.py` 中的 Protocol。只有 `search_knowledge` Tool 可以访问它。
 
 ### 10.3 不保留的 Memory
 
@@ -1114,9 +1116,9 @@ LANGFUSE_SECRET_KEY（可选）
 
 ---
 
-## 18. 目标 Repo 结构
+## 18. 当前 Repo 结构
 
-这是目标结构，不代表文件当前都已实现：
+Python 包采用 `src/` 布局，安装后的模块导入名保持 `agents`、`tools`、`skills`、`backend` 和 `eval`：
 
 ```text
 AgentDesk/
@@ -1127,77 +1129,48 @@ AgentDesk/
 ├── docker-compose.yml
 ├── .env.example
 ├── alembic.ini
-├── migrations/
+├── alembic/
+│   └── versions/
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── acceptance/
+│   │   ├── current.md
+│   │   └── history/l3/
+│   └── plans/
 ├── specs/
 │   ├── README.md
+│   ├── acceptance/test_matrix.yaml
 │   ├── agent_contracts/
 │   ├── tool_schemas/tools.json
 │   └── openapi/openapi.json
-├── agents/
-│   ├── supervisor.py
-│   ├── knowledge.py
-│   ├── action.py
-│   ├── policy.py
-│   ├── schemas.py
-│   └── context.py
-├── tools/
-│   ├── registry.py
-│   ├── schemas.py
-│   ├── context.py
-│   ├── account.py
-│   ├── service.py
-│   └── ticket.py
-├── skills/password_reset/
-│   ├── skill.py
-│   ├── validate_user.py
-│   └── notification_template.md
-├── backend/
-│   ├── Dockerfile
-│   ├── main.py
-│   ├── worker.py
-│   ├── api/
-│   │   ├── auth.py
-│   │   ├── tickets.py
-│   │   ├── approvals.py
-│   │   └── eval.py
-│   ├── auth/
-│   ├── db/
-│   ├── graph/
-│   │   ├── state.py
-│   │   ├── nodes.py
-│   │   ├── edges.py
-│   │   └── builder.py
-│   ├── governance/
-│   │   ├── executor.py
-│   │   ├── whitelist.py
-│   │   ├── idempotency.py
-│   │   ├── circuit_breaker.py
-│   │   ├── audit.py
-│   │   └── redaction.py
-│   ├── integrations/
-│   │   ├── model_client.py
-│   │   └── chroma_store.py
-│   ├── observability/
-│   │   ├── logging.py
-│   │   └── langfuse_client.py
-│   ├── jobs/
-│   │   ├── ticket_jobs.py
-│   │   └── outbox.py
-│   └── memory/checkpointer.py
-├── prompts/
-├── eval/
-│   ├── golden_dataset.json
-│   ├── baseline.json
-│   ├── metrics.py
-│   ├── run_eval.py
-│   └── judge.py
+├── src/
+│   ├── agents/
+│   ├── tools/
+│   ├── skills/password_reset/
+│   ├── eval/
+│   └── backend/
+│       ├── Dockerfile
+│       ├── api/
+│       ├── auth/
+│       ├── db/
+│       ├── graph/
+│       ├── governance/
+│       ├── integrations/
+│       └── jobs/
+├── resources/
+│   ├── prompts/
+│   └── evaluation/golden_dataset.json
+├── artifacts/evaluation/
+│   ├── history/
+│   └── candidates/
 ├── tests/
-│   ├── fakes/
+│   ├── support/fakes/
 │   ├── unit/
 │   ├── integration/
-│   └── test_failure_modes.py
+│   └── acceptance/failure_modes/
+├── scripts/
+│   ├── acceptance/
+│   └── maintenance/
 ├── frontend/
 │   ├── Dockerfile
 │   └── src/
@@ -1207,7 +1180,7 @@ AgentDesk/
     └── eval.yml
 ```
 
-后端 Dockerfile 位于 `backend/Dockerfile`，构建 context 必须是仓库根，才能复制所有顶层领域包。
+后端 Dockerfile 位于 `src/backend/Dockerfile`，构建 context 必须是仓库根，以便安装 `src/` 命名空间包并复制 `resources/`。容器通过 Dockerfile 将 `uv` 安装目录加入 `PATH`。
 
 ---
 
@@ -1224,7 +1197,7 @@ AgentDesk/
 - 20 条人工 Golden Cases；
 - pyproject、前端依赖和 Compose 目标依赖确定。
 
-验收：没有空契约、没有 Schema 命名冲突、文档链接有效。当前仓库已按 [`Phase 0 implementation plan`](superpowers/plans/2026-09-14-phase-0-contract-foundation.md) 完成本阶段产出与本地验收；这不代表 Phase 1～3 已实现。
+验收：没有空契约、没有 Schema 命名冲突、文档链接有效。历史计划见 [`Phase 0 implementation plan`](plans/2026-09-14-phase-0-contract-foundation.md)；计划记录不等同于本轮运行证据。
 
 ### Phase 1：基础纵切
 
@@ -1236,7 +1209,7 @@ AgentDesk/
 - Supervisor/Knowledge/Action 的只读路径；
 - Ticket API、Worker、基础前端。
 
-验收：提交网络查询返回 202，Worker 执行、引用可回查、重启后状态仍可查询。当前仓库已按 [`Phase 1 implementation plan`](superpowers/plans/2026-09-14-phase-1-read-only-vertical-slice.md) 完成本阶段产出与全量验收，产出 `eval/artifacts/phase1-after.json` 真实对比产物。
+验收：提交网络查询返回 202，Worker 执行、引用可回查、重启后状态仍可查询。历史计划见 [`Phase 1 implementation plan`](plans/2026-09-14-phase-1-read-only-vertical-slice.md)。`artifacts/evaluation/history/phase1-after.json` 是旧运行器生成的历史文件，其 E2E 指标以 expected labels 填充，不构成真实图执行或验收证据。
 
 ### Phase 2：写操作治理与 HITL
 

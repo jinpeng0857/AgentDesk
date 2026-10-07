@@ -1,595 +1,470 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTracesStore } from '../stores/traces'
 import type { TraceEventResponse } from '../api/types'
-
+import AppShell from '../components/AppShell.vue'
+import UiIcon from '../components/UiIcon.vue'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const tracesStore = useTracesStore()
-
 const inputTicketId = ref('')
-
+const eventFilter = ref<'all' | 'agents' | 'tools' | 'approval'>('all')
+const filterOptions = [
+  { key: 'all', label: '全部事件' },
+  { key: 'agents', label: '角色与路由' },
+  { key: 'tools', label: '工具调用' },
+  { key: 'approval', label: '人工审批' },
+] as const
+const actorDescriptions: Record<string, string> = {
+  supervisor: '分类与汇总',
+  knowledge: '知识检索',
+  action: '提案与执行',
+  policy: '风险判定',
+  dispatcher: '路由与状态',
+  approval: '人工决定',
+}
 onMounted(async () => {
   tracesStore.setApiClient(authStore.apiClient)
-  const paramId = route.params.ticketId as string | undefined
-  const queryId = route.query.ticket_id as string | undefined
-  const targetId = paramId || queryId
+  const paramId = route.params.ticketId
+  const queryId = route.query.ticket_id
+  const targetId =
+    typeof paramId === 'string'
+      ? paramId
+      : typeof queryId === 'string'
+        ? queryId
+        : ''
   if (targetId) {
     inputTicketId.value = targetId
     await loadTrace(targetId)
   }
 })
-
-async function loadTrace(ticketId: string): Promise<void> {
-  const trimmed = ticketId.trim()
-  if (!trimmed) return
+async function loadTrace(id: string): Promise<void> {
+  if (!id.trim()) return
   try {
-    await tracesStore.fetchTrace(trimmed)
+    await tracesStore.fetchTrace(id.trim())
   } catch {
-    // Error is stored in tracesStore.error
+    /* Store exposes API error. */
   }
 }
-
 async function handleSearch(): Promise<void> {
-  if (inputTicketId.value.trim()) {
-    await router.replace({
-      name: 'traces',
-      params: { ticketId: inputTicketId.value.trim() },
-    })
-    await loadTrace(inputTicketId.value.trim())
-  }
+  const id = inputTicketId.value.trim()
+  if (!id) return
+  await router.replace({ name: 'traces', params: { ticketId: id } })
+  await loadTrace(id)
 }
-
-function handleBackToTickets(): void {
-  router.push('/tickets')
+function outcome(event: TraceEventResponse): string {
+  return event.summary.match(/outcome=([a-z_]+)/)?.[1] || ''
 }
-
-const stats = computed(() => {
-  const total = tracesStore.traces.length
-  let agentSteps = 0
-  let toolCalls = 0
-  let cacheHits = 0
-  let failures = 0
-
-  for (const event of tracesStore.traces) {
-    if (event.event_type === 'agent_step') {
-      agentSteps += 1
-    } else if (event.event_type.startsWith('tool_call')) {
-      toolCalls += 1
-      if (event.summary.includes('outcome=cache_hit')) {
-        cacheHits += 1
-      }
-      if (event.summary.includes('outcome=failed') || event.summary.includes('outcome=rejected')) {
-        failures += 1
-      }
-    }
-  }
-
-  return { total, agentSteps, toolCalls, cacheHits, failures }
-})
-
-function getActorClass(actor: TraceEventResponse['actor']): string {
-  switch (actor) {
-    case 'supervisor':
-      return 'actor-supervisor'
-    case 'knowledge':
-      return 'actor-knowledge'
-    case 'action':
-      return 'actor-action'
-    case 'policy':
-      return 'actor-policy'
-    case 'approval':
-      return 'actor-approval'
-    case 'dispatcher':
-      return 'actor-dispatcher'
-    default:
-      return 'actor-default'
-  }
+function outcomeClass(value: string): string {
+  if (value === 'succeeded' || value === 'cache_hit') return 'success'
+  if (['failed', 'rejected', 'timeout'].includes(value)) return 'error'
+  return ''
 }
-
-function getOutcomeClass(summary: string): string {
-  if (summary.includes('outcome=succeeded')) return 'outcome-success'
-  if (summary.includes('outcome=cache_hit')) return 'outcome-cache'
-  if (summary.includes('outcome=failed')) return 'outcome-failed'
-  if (summary.includes('outcome=rejected')) return 'outcome-rejected'
-  if (summary.includes('outcome=timeout')) return 'outcome-timeout'
-  return 'outcome-neutral'
+function category(type: string): string {
+  if (type === 'agent_step') return '角色步骤'
+  if (type.startsWith('tool_call')) return '工具调用'
+  if (type === 'approval') return '人工审批'
+  return type
 }
-
-function getEventCategory(eventType: string): string {
-  if (eventType === 'agent_step') return 'Agent Step'
-  if (eventType.startsWith('tool_call:')) return 'Tool Call'
-  if (eventType === 'approval') return 'Human Approval'
-  return eventType
-}
+const stats = computed(() => ({
+  total: tracesStore.traces.length,
+  agents: tracesStore.traces.filter((e) => e.event_type === 'agent_step')
+    .length,
+  tools: tracesStore.traces.filter((e) => e.event_type.startsWith('tool_call'))
+    .length,
+  cached: tracesStore.traces.filter(
+    (e) => e.event_type.startsWith('tool_call') && outcome(e) === 'cache_hit',
+  ).length,
+  failures: tracesStore.traces.filter(
+    (e) =>
+      e.event_type.startsWith('tool_call') &&
+      ['failed', 'rejected', 'timeout'].includes(outcome(e)),
+  ).length,
+}))
+const visibleEvents = computed(() =>
+  tracesStore.traces
+    .map((event, index) => ({ event, index }))
+    .filter(
+      ({ event }) =>
+        eventFilter.value === 'all' ||
+        (eventFilter.value === 'agents'
+          ? event.event_type === 'agent_step'
+          : eventFilter.value === 'tools'
+            ? event.event_type.startsWith('tool_call')
+            : event.event_type === 'approval'),
+    ),
+)
 </script>
-
 <template>
-  <div class="trace-viewer-layout">
-    <!-- Navigation Bar -->
-    <header class="navbar">
-      <div class="brand-group">
-        <h1 class="brand-title">AgentDesk</h1>
-        <span class="sub-title">Audit Trace Viewer</span>
-      </div>
-      <div class="nav-actions">
-        <button class="btn-secondary" @click="handleBackToTickets">
-          Back to Tickets
-        </button>
-      </div>
-    </header>
-
-    <main class="content-container">
-      <!-- Search and Controls Card -->
-      <section class="card search-card">
-        <form class="search-bar" @submit.prevent="handleSearch">
-          <label for="ticket-id-input" class="search-label">Ticket UUID:</label>
+  <AppShell
+    active="traces"
+    title="执行轨迹"
+    subtitle="从角色交接到工具执行，把处理过程串成一条可回查的时间线。"
+    eyebrow="EXECUTION & AUDIT"
+  >
+    <template #actions
+      ><button
+        class="button"
+        :disabled="tracesStore.loading || !tracesStore.currentTicketId"
+        @click="loadTrace(tracesStore.currentTicketId || '')"
+      >
+        <UiIcon name="refresh" :size="16" />刷新
+      </button></template
+    >
+    <section class="panel trace-search">
+      <form @submit.prevent="handleSearch">
+        <label for="ticket-id-input">工单 ID</label>
+        <div class="search-row">
           <input
             id="ticket-id-input"
             v-model="inputTicketId"
             type="text"
-            class="input-ticket"
-            placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+            placeholder="粘贴工单完整 ID，或从工单详情进入"
             required
-          />
-          <button
-            type="submit"
-            class="btn-primary"
+          /><button
+            class="button primary"
             :disabled="tracesStore.loading"
+            type="submit"
           >
-            {{ tracesStore.loading ? 'Loading Trace...' : 'Inspect Trace' }}
+            {{ tracesStore.loading ? '加载中…' : '查看轨迹'
+            }}<UiIcon name="arrow" :size="15" />
           </button>
-        </form>
-
-        <div v-if="tracesStore.error" class="error-banner">
-          {{ tracesStore.error }}
         </div>
-      </section>
-
-      <!-- Overview Stats Card -->
-      <section v-if="tracesStore.traces.length > 0" class="card stats-card">
-        <div class="stats-header">
-          <h2>Execution Timeline Overview</h2>
-          <span class="ticket-badge">Ticket: {{ tracesStore.currentTicketId }}</span>
-        </div>
-        <div class="stats-grid">
-          <div class="stat-box">
-            <span class="stat-value">{{ stats.total }}</span>
-            <span class="stat-label">Total Events</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-value stat-agent">{{ stats.agentSteps }}</span>
-            <span class="stat-label">Agent Steps</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-value stat-tool">{{ stats.toolCalls }}</span>
-            <span class="stat-label">Tool Calls</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-value stat-cache">{{ stats.cacheHits }}</span>
-            <span class="stat-label">Cache Hits (Idempotent)</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-value stat-failure">{{ stats.failures }}</span>
-            <span class="stat-label">Failures / Rejected</span>
-          </div>
-        </div>
-
-        <div class="security-banner">
-          <span class="shield-icon">🛡️</span>
-          <span class="security-text">
-            <strong>Zero Secret Leakage:</strong> All arguments, tokens and passwords
-            have been masked (<code>***</code>) at the backend execution gateway before storage and transmission.
-          </span>
-        </div>
-      </section>
-
-      <!-- Timeline View -->
-      <section class="card timeline-card">
-        <h3>Chronological Event Stream</h3>
-
-        <div v-if="tracesStore.loading" class="loading-state">
-          Loading audit events...
-        </div>
-
-        <div v-else-if="tracesStore.traces.length === 0" class="empty-state">
-          <p v-if="!tracesStore.currentTicketId">
-            Please enter a Ticket UUID above to view its end-to-end execution trace.
+      </form>
+    </section>
+    <div v-if="tracesStore.error" class="error-banner" role="alert">
+      {{ tracesStore.error }}
+    </div>
+    <div v-if="tracesStore.traces.length" class="trace-overview">
+      <div>
+        <strong>{{ stats.total }}</strong
+        ><span>全部事件</span>
+      </div>
+      <div>
+        <strong>{{ stats.agents }}</strong
+        ><span>角色步骤</span>
+      </div>
+      <div>
+        <strong>{{ stats.tools }}</strong
+        ><span>工具尝试</span>
+      </div>
+      <div>
+        <strong>{{ stats.cached }}</strong
+        ><span>缓存命中</span>
+      </div>
+      <div>
+        <strong :class="{ 'failure-count': stats.failures > 0 }">{{
+          stats.failures
+        }}</strong
+        ><span>失败 / 拒绝 / 超时</span>
+      </div>
+    </div>
+    <section
+      class="panel trace-timeline"
+      aria-labelledby="timeline-heading"
+      :aria-busy="tracesStore.loading"
+    >
+      <div class="panel-heading">
+        <div>
+          <h2 id="timeline-heading">处理时间线</h2>
+          <p v-if="tracesStore.currentTicketId" class="mono">
+            #{{ tracesStore.currentTicketId }}
           </p>
-          <p v-else>
-            No trace events recorded for ticket <code>{{ tracesStore.currentTicketId }}</code>.
-          </p>
+          <p v-else>选择工单后，显示已记录的角色与工具事件。</p>
         </div>
-
-        <div v-else class="timeline-stream">
-          <div
-            v-for="(event, idx) in tracesStore.traces"
-            :key="event.request_id + '-' + idx"
-            class="timeline-item"
+        <span class="badge">只读记录</span>
+      </div>
+      <div v-if="tracesStore.traces.length" class="timeline-toolbar">
+        <div class="tabs" aria-label="筛选事件类型">
+          <button
+            v-for="tab in filterOptions"
+            :key="tab.key"
+            :class="['tab', { active: eventFilter === tab.key }]"
+            :aria-pressed="eventFilter === tab.key"
+            @click="eventFilter = tab.key"
           >
-            <!-- Timeline Marker -->
-            <div class="timeline-marker">
-              <span class="step-number">{{ idx + 1 }}</span>
-              <div class="timeline-line"></div>
+            {{ tab.label }}
+          </button>
+        </div>
+        <span>{{ visibleEvents.length }} 条事件</span>
+      </div>
+      <div v-if="tracesStore.loading" class="empty-state" role="status">
+        正在加载审计记录…
+      </div>
+      <div v-else-if="!visibleEvents.length" class="empty-state">
+        <UiIcon name="trace" :size="36" />
+        <h3>
+          {{
+            tracesStore.currentTicketId
+              ? '暂无匹配的轨迹事件'
+              : '每一步都有来处'
+          }}
+        </h3>
+        <p>
+          {{
+            tracesStore.currentTicketId
+              ? '该工单暂无对应记录，或当前筛选没有匹配事件。'
+              : '输入工单 ID，查看角色交接、治理判定、工具尝试与人工决定。'
+          }}
+        </p>
+      </div>
+      <ol v-else class="timeline-stream">
+        <li
+          v-for="{ event, index } in visibleEvents"
+          :key="event.request_id + '-' + index"
+          class="timeline-item"
+        >
+          <div class="timeline-marker">
+            <span>{{ String(index + 1).padStart(2, '0') }}</span>
+          </div>
+          <div class="timeline-content">
+            <div class="event-header">
+              <div>
+                <span class="actor-name">{{ event.actor }}</span
+                ><span class="actor-description">{{
+                  actorDescriptions[event.actor] || category(event.event_type)
+                }}</span
+                ><span class="badge event-category">{{
+                  category(event.event_type)
+                }}</span>
+              </div>
+              <time :datetime="event.timestamp">{{
+                new Date(event.timestamp).toLocaleTimeString('zh-CN', {
+                  hour12: false,
+                })
+              }}</time>
             </div>
-
-            <!-- Event Card -->
-            <div class="timeline-content">
-              <div class="event-header">
-                <div class="actor-tags">
-                  <span :class="['actor-badge', getActorClass(event.actor)]">
-                    {{ event.actor }}
-                  </span>
-                  <span class="category-badge">
-                    {{ getEventCategory(event.event_type) }}
-                  </span>
-                </div>
-                <span class="event-time">
-                  {{ new Date(event.timestamp).toLocaleTimeString() }}
-                  <small class="event-iso">{{ event.timestamp }}</small>
-                </span>
-              </div>
-
-              <div class="event-body">
-                <div class="summary-line">
-                  <span class="summary-text">{{ event.summary }}</span>
-                  <span
-                    v-if="event.event_type.startsWith('tool_call')"
-                    :class="['outcome-badge', getOutcomeClass(event.summary)]"
-                  >
-                    {{ event.summary.split('outcome=')[1]?.split(' ')[0] || 'executed' }}
-                  </span>
-                </div>
-
-                <div class="event-meta">
-                  <span class="meta-field">
-                    <strong>Request ID:</strong>
-                    <code class="meta-code">{{ event.request_id }}</code>
-                  </span>
-                  <span class="meta-field">
-                    <strong>Trace ID:</strong>
-                    <code class="meta-code">{{ event.trace_id.slice(0, 8) }}...</code>
-                  </span>
-                </div>
-              </div>
+            <p class="event-summary">{{ event.summary }}</p>
+            <div class="event-bottom">
+              <span
+                v-if="outcome(event)"
+                :class="['badge', outcomeClass(outcome(event))]"
+                >{{ outcome(event) }}</span
+              >
+              <details>
+                <summary>查看追溯标识</summary>
+                <dl>
+                  <dt>Request ID</dt>
+                  <dd class="mono">{{ event.request_id }}</dd>
+                  <dt>Trace ID</dt>
+                  <dd class="mono">{{ event.trace_id }}</dd>
+                  <dt>记录时间</dt>
+                  <dd class="mono">{{ event.timestamp }}</dd>
+                </dl>
+              </details>
             </div>
           </div>
-        </div>
-      </section>
-    </main>
-  </div>
+        </li>
+      </ol>
+      <div class="trace-footnote">
+        <UiIcon name="lock" :size="15" />
+        <p>
+          显示网关输出的脱敏审计摘要；密码、令牌等敏感值不应出现在记录中。工具尝试次数包含失败、拒绝、超时和缓存命中。
+        </p>
+      </div>
+    </section>
+  </AppShell>
 </template>
-
 <style scoped>
-.trace-viewer-layout {
-  min-height: 100vh;
-  background-color: #f7fafc;
-  display: flex;
-  flex-direction: column;
+.trace-search {
+  padding: 20px 24px;
+  margin-bottom: 24px;
 }
-
-.navbar {
+.trace-search form {
+  max-width: 760px;
+}
+.search-row {
   display: flex;
+  gap: 12px;
+}
+.trace-overview {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 8px 0 26px;
+}
+.trace-overview > div {
+  padding: 0 30px;
+  border-right: 1px solid var(--line);
+}
+.trace-overview > div:first-child {
+  padding-left: 0;
+}
+.trace-overview > div:last-child {
+  border: 0;
+}
+.trace-overview strong {
+  display: block;
+  font-size: 25px;
+  font-weight: 550;
+  letter-spacing: -1px;
+}
+.trace-overview span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.failure-count {
+  color: var(--danger);
+}
+.timeline-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  background-color: #1a202c;
-  color: white;
-  padding: 0.75rem 1.5rem;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
 }
-
-.brand-group {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+.timeline-toolbar > span {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
 }
-
-.brand-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-.sub-title {
-  font-size: 0.875rem;
-  color: #a0aec0;
-}
-
-.content-container {
-  max-width: 1000px;
-  width: 100%;
-  margin: 1.5rem auto;
-  padding: 0 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.card {
-  background: white;
-  border-radius: 8px;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.search-bar {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.search-label {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #4a5568;
-}
-
-.input-ticket {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #cbd5e0;
-  border-radius: 6px;
-  font-family: monospace;
-  font-size: 0.9rem;
-}
-
-.btn-primary {
-  background-color: #3182ce;
-  color: white;
-  border: none;
-  padding: 0.5rem 1.25rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #2b6cb0;
-}
-
-.btn-secondary {
-  background-color: #4a5568;
-  color: white;
-  border: none;
-  padding: 0.4rem 0.85rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.error-banner {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background-color: #fff5f5;
-  color: #c53030;
-  border: 1px solid #feb2b2;
-  border-radius: 6px;
-  font-size: 0.875rem;
-}
-
-.stats-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.stats-header h2 {
-  font-size: 1.15rem;
-  margin: 0;
-  color: #2d3748;
-}
-
-.ticket-badge {
-  font-family: monospace;
-  font-size: 0.85rem;
-  background-color: #edf2f7;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.stat-box {
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #2d3748;
-}
-
-.stat-label {
-  font-size: 0.75rem;
-  color: #718096;
-  text-transform: uppercase;
-}
-
-.stat-agent { color: #805ad5; }
-.stat-tool { color: #319795; }
-.stat-cache { color: #38a169; }
-.stat-failure { color: #e53e3e; }
-
-.security-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background-color: #f0fff4;
-  border: 1px solid #c6f6d5;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: #22543d;
-}
-
-.shield-icon {
-  font-size: 1.1rem;
-}
-
 .timeline-stream {
-  display: flex;
-  flex-direction: column;
-  margin-top: 1rem;
+  margin: 0;
+  padding: 26px 28px 6px;
+  list-style: none;
 }
-
 .timeline-item {
-  display: flex;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 18px;
+}
+.timeline-marker {
   position: relative;
 }
-
-.timeline-marker {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 32px;
+.timeline-marker::after {
+  content: '';
+  width: 1px;
+  background: #d8e1ef;
+  position: absolute;
+  left: 15px;
+  top: 28px;
+  bottom: 0;
 }
-
-.step-number {
-  width: 28px;
-  height: 28px;
+.timeline-item:last-child .timeline-marker::after {
+  display: none;
+}
+.timeline-marker > span {
+  display: grid;
+  place-items: center;
+  border: 1px solid #cbd9ef;
+  background: #f5f8ff;
+  color: #526b95;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background-color: #edf2f7;
-  border: 2px solid #cbd5e0;
-  color: #4a5568;
-  font-weight: 700;
-  font-size: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
+  font:
+    10px Consolas,
+    monospace;
 }
-
-.timeline-line {
-  flex: 1;
-  width: 2px;
-  background-color: #e2e8f0;
-  margin-top: 4px;
-  margin-bottom: 4px;
-}
-
 .timeline-content {
-  flex: 1;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  padding: 2px 0 28px;
+  min-width: 0;
 }
-
 .event-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
+  gap: 12px;
 }
-
-.actor-tags {
+.event-header > div {
   display: flex;
-  gap: 0.5rem;
+  gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
-
-.actor-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
+.actor-name {
+  font-size: 13px;
+  font-weight: 600;
 }
-
-.actor-supervisor { background: #ede9fe; color: #5b21b6; }
-.actor-knowledge { background: #dbeafe; color: #1e40af; }
-.actor-action { background: #dcfce7; color: #166534; }
-.actor-policy { background: #ffedd5; color: #9a3412; }
-.actor-approval { background: #fef3c7; color: #92400e; }
-.actor-dispatcher { background: #f1f5f9; color: #475569; }
-.actor-default { background: #f3f4f6; color: #374151; }
-
-.category-badge {
-  font-size: 0.75rem;
-  background-color: #edf2f7;
-  color: #4a5568;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
+.actor-description {
+  font-size: 11px;
+  color: var(--muted);
 }
-
-.event-time {
-  font-size: 0.75rem;
-  color: #718096;
+.event-header time {
+  color: var(--muted);
+  font:
+    10px Consolas,
+    monospace;
+  white-space: nowrap;
 }
-
-.event-iso {
-  display: block;
-  font-family: monospace;
-  color: #a0aec0;
+.event-summary {
+  font-size: 12px;
+  color: #56667d;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+  margin-top: 11px;
 }
-
-.summary-line {
+.event-bottom {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: white;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
-  margin-bottom: 0.5rem;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 12px;
 }
-
-.summary-text {
-  font-family: monospace;
-  font-size: 0.85rem;
-  color: #2d3748;
-  word-break: break-all;
+.event-bottom details {
+  font-size: 10px;
+  color: var(--muted);
 }
-
-.outcome-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
+.event-bottom summary {
+  color: #597399;
 }
-
-.outcome-success { background: #c6f6d5; color: #22543d; }
-.outcome-cache { background: #b2f5ea; color: #234e52; }
-.outcome-failed { background: #fed7d7; color: #742a2a; }
-.outcome-rejected { background: #fbb6ce; color: #702459; }
-.outcome-timeout { background: #feebc8; color: #7b341e; }
-.outcome-neutral { background: #edf2f7; color: #4a5568; }
-
-.event-meta {
+.event-bottom dl {
+  margin-bottom: 0;
+}
+.event-bottom dd {
+  margin: 3px 0 8px;
+}
+.trace-footnote {
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
   display: flex;
-  gap: 1.5rem;
-  font-size: 0.75rem;
-  color: #718096;
+  gap: 9px;
+  color: var(--muted);
 }
-
-.meta-code {
-  font-family: monospace;
-  background: #edf2f7;
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
-  margin-left: 0.25rem;
+.trace-footnote svg {
+  margin-top: 3px;
 }
-
-.empty-state, .loading-state {
-  text-align: center;
-  padding: 2rem;
-  color: #718096;
-  font-size: 0.95rem;
+.trace-footnote p {
+  font-size: 10px;
+  line-height: 1.9;
+}
+@media (max-width: 650px) {
+  .trace-search {
+    padding: 18px;
+  }
+  .trace-overview {
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .trace-overview > div {
+    padding: 0;
+    border: 0;
+  }
+  .trace-overview span {
+    font-size: 9px;
+  }
+  .timeline-stream {
+    padding: 22px 18px 0;
+  }
+  .timeline-item {
+    gap: 12px;
+  }
+  .event-header {
+    align-items: flex-start;
+  }
+  .actor-description,
+  .event-category {
+    display: none;
+  }
+  .timeline-toolbar {
+    padding: 14px;
+  }
+  .timeline-toolbar > span {
+    display: none;
+  }
 }
 </style>

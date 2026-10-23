@@ -21,9 +21,9 @@ EXPECTED_OUTPUT_MODELS = {
     "policy": "PolicyExplanation",
 }
 EXPECTED_PROMPT_VERSIONS = {
-    "supervisor": "1.0.7",
+    "supervisor": "1.0.8",
     "knowledge": "1.0.0",
-    "action": "1.0.3",
+    "action": "1.0.4",
     "policy": "1.0.0",
 }
 

@@ -82,6 +82,7 @@ class PolicyReason(StrEnum):
     REQUIRES_PRIVILEGED_ACCESS_APPROVAL = "requires_privileged_access_approval"
     DENY_NOT_OWNER = "deny_not_owner"
     DENY_INACTIVE_ACCOUNT = "deny_inactive_account"
+    DENY_RESOURCE_NOT_FOUND = "deny_resource_not_found"
     DENY_UNKNOWN_TOOL = "deny_unknown_tool"
     DENY_UNAUTHORIZED = "deny_unauthorized"
 

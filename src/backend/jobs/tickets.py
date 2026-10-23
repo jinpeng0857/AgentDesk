@@ -28,7 +28,10 @@ from backend.graph.context import GraphContext
 from backend.graph.edges import advance_dispatch
 from backend.graph.state import initial_ticket_state
 from backend.integrations.knowledge_store import ChromaKnowledgeStore
-from backend.integrations.model_client import ModelOutputInvalid, ModelTransportError
+from backend.integrations.model_client import (
+    ModelOutputInvalid,
+    ModelTransportError,
+)
 from backend.integrations.prompt_loader import LoadedPrompt
 from backend.integrations.tool_adapters import (
     DisabledAccessRequestService,
@@ -315,9 +318,13 @@ async def _run_ticket_job(
         current_try = job_try if isinstance(job_try, int) and not isinstance(job_try, bool) else 1
         if current_try < MAX_MODEL_TRANSPORT_JOB_TRIES:
             raise Retry(defer=MODEL_TRANSPORT_RETRY_DELAY_S) from None
-        failure_code = "model_transport_exhausted" if isinstance(exc, ModelTransportError) else (
-            "worker_infrastructure_exhausted"
-        )
+        if isinstance(exc, ModelTransportError):
+            failure_code = f"model_{exc.kind.value}"
+            if exc.status_code is not None:
+                failure_code += f"_{exc.status_code}"
+            failure_code += "_exhausted"
+        else:
+            failure_code = "worker_infrastructure_exhausted"
         return await runner.fail(ticket_id, failure_code)
     except ApprovalConflictError:
         raise

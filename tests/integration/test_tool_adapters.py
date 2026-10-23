@@ -66,6 +66,22 @@ async def test_query_order_returns_a_decimal_refundable_amount(
     assert result.refundable_amount == Decimal("50.00")
     assert isinstance(result.refundable_amount, Decimal)
     assert result.currency == "USD"
+    assert result.found is True
+
+
+async def test_query_order_returns_explicit_not_found_instead_of_tool_failure(
+    session_factory: async_sessionmaker[AsyncSession], seeded_demo_data: None
+) -> None:
+    async with session_factory() as session:
+        result = await SqlOrderRepository(session).query_order(
+            QueryOrderArgs(order_id="ORD-9999")
+        )
+
+    assert result.found is False
+    assert result.order_id == "ORD-9999"
+    assert result.requester_id is None
+    assert result.status is None
+    assert result.refundable_amount is None
 
 
 async def test_check_service_returns_the_seeded_state(
@@ -76,6 +92,19 @@ async def test_check_service_returns_the_seeded_state(
             CheckServiceArgs(service_name="vpn")
         )
 
+    assert result.status is ServiceStatus.DEGRADED
+    assert result.incident_id == "INC-1001"
+
+
+async def test_check_service_resolves_the_trace_observed_company_vpn_alias(
+    session_factory: async_sessionmaker[AsyncSession], seeded_demo_data: None
+) -> None:
+    async with session_factory() as session:
+        result = await SqlServiceRepository(session).check_service(
+            CheckServiceArgs(service_name="company_vpn")
+        )
+
+    assert result.service_name == "vpn"
     assert result.status is ServiceStatus.DEGRADED
     assert result.incident_id == "INC-1001"
 

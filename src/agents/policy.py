@@ -191,6 +191,22 @@ def assess_risk(
                     f"Requester {actor.user_id} cannot reset password for {args.user_id}."
                 ),
             )
+        if resource is None:
+            return RiskDecision(
+                allowed=False,
+                risk_level=RiskLevel.LOW,
+                require_human=False,
+                reason_code=PolicyReason.DENY_RESOURCE_NOT_FOUND,
+                explanation="The target account state could not be verified.",
+            )
+        if resource.status == "not_found":
+            return RiskDecision(
+                allowed=False,
+                risk_level=RiskLevel.LOW,
+                require_human=False,
+                reason_code=PolicyReason.DENY_RESOURCE_NOT_FOUND,
+                explanation="The target account does not exist.",
+            )
         if resource is not None:
             if resource.owner_id != actor.user_id:
                 return RiskDecision(

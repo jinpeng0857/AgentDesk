@@ -348,14 +348,34 @@
             "title": "Order Id",
             "type": "string"
           },
+          "found": {
+            "title": "Found",
+            "type": "boolean"
+          },
           "requester_id": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Requester Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Requester Id"
           },
           "status": {
-            "$ref": "#/$defs/OrderStatus"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/OrderStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "refundable_amount": {
             "anyOf": [
@@ -366,28 +386,44 @@
               {
                 "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
                 "type": "string"
+              },
+              {
+                "type": "null"
               }
             ],
+            "default": null,
             "title": "Refundable Amount"
           },
           "currency": {
-            "const": "USD",
-            "title": "Currency",
-            "type": "string"
+            "anyOf": [
+              {
+                "const": "USD",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency"
           },
           "version": {
-            "minimum": 1,
-            "title": "Version",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
           }
         },
         "required": [
           "order_id",
-          "requester_id",
-          "status",
-          "refundable_amount",
-          "currency",
-          "version"
+          "found"
         ],
         "title": "QueryOrderResult",
         "type": "object"

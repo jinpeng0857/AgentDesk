@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.schemas import TicketStatus
 from backend.config import AppSettings
 from backend.db.repositories.approvals import ApprovalConflictError
-from backend.integrations.model_client import ModelTransportError
+from backend.integrations.model_client import ModelTransportError, ModelTransportFailureKind
 from backend.jobs.context import WorkerContext
 from backend.jobs.tickets import start_ticket
 
@@ -58,14 +58,43 @@ async def test_start_ticket_requests_arq_retry_for_transient_model_transport() -
 
 
 async def test_start_ticket_escalates_after_transport_retry_budget_is_exhausted() -> None:
-    runner = TransportFailingRunner()
+    runner = TransportFailingRunner(
+        ModelTransportError(
+            "model provider timed out",
+            kind=ModelTransportFailureKind.TIMEOUT,
+        )
+    )
     context = worker_context(runner)
     context["job_try"] = 3
 
     status = await start_ticket(context, "ticket-123")
 
     assert status is TicketStatus.ESCALATED
-    assert runner.failures == [("ticket-123", "model_transport_exhausted")]
+    assert runner.failures == [("ticket-123", "model_timeout_exhausted")]
+
+
+@pytest.mark.parametrize(
+    ("kind", "status_code", "expected_code"),
+    [
+        (ModelTransportFailureKind.CONNECTION, None, "model_connection_exhausted"),
+        (ModelTransportFailureKind.SERVER_ERROR, 503, "model_server_error_503_exhausted"),
+    ],
+)
+async def test_start_ticket_records_transport_failure_category_after_retries(
+    kind: ModelTransportFailureKind,
+    status_code: int | None,
+    expected_code: str,
+) -> None:
+    runner = TransportFailingRunner(
+        ModelTransportError("classified model failure", kind=kind, status_code=status_code)
+    )
+    context = worker_context(runner)
+    context["job_try"] = 3
+
+    status = await start_ticket(context, "ticket-123")
+
+    assert status is TicketStatus.ESCALATED
+    assert runner.failures == [("ticket-123", expected_code)]
 
 
 async def test_start_ticket_retries_transient_database_failure() -> None:

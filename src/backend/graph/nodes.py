@@ -27,6 +27,7 @@ from agents.schemas import (
     KnowledgeRef,
     PendingOperation,
     ResolutionMode,
+    ResourceContext,
     RiskLevel,
     RoutingDecision,
     TicketState,
@@ -35,6 +36,7 @@ from agents.schemas import (
     ToolResult,
 )
 from agents.supervisor import finalize_ticket, run_supervisor
+from backend.db.models import UserRecord
 from backend.db.repositories.approvals import ApprovalRepository
 from backend.db.repositories.audit import AuditRepository
 from backend.db.repositories.operations import OperationRepository
@@ -55,7 +57,7 @@ from backend.integrations.tool_adapters import (
     SqlUserRepository,
 )
 from tools.context import KnowledgeStore
-from tools.schemas import SearchKnowledgeResult
+from tools.schemas import ResetPasswordArgs, SearchKnowledgeResult
 
 AsyncNode = Callable[[TicketState], Awaitable[dict[str, Any]]]
 SyncNode = Callable[[TicketState], dict[str, Any]]
@@ -287,7 +289,26 @@ def make_policy_node(context: GraphContext) -> AsyncNode:
             role="requester",
             authenticated=True,
         )
-        decision = assess_risk(pending_op, actor=actor)
+        resource: ResourceContext | None = None
+        if isinstance(pending_op.validated_args, ResetPasswordArgs):
+            if context.session_factory is None:
+                raise RuntimeError("session_factory is required to verify reset target")
+            async with context.session_factory() as session:
+                user = await session.get(UserRecord, pending_op.validated_args.user_id)
+                resource = ResourceContext(
+                    resource_type="user",
+                    resource_id=pending_op.validated_args.user_id,
+                    owner_id=user.id if user is not None else pending_op.validated_args.user_id,
+                    status=(
+                        "not_found"
+                        if user is None
+                        else "active"
+                        if user.active
+                        else "inactive"
+                    ),
+                    version=user.version if user is not None else 1,
+                )
+        decision = assess_risk(pending_op, actor=actor, resource=resource)
         updates = {"risk_decision": decision}
         validate_node_output_keys("policy", updates)
         return updates

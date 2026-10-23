@@ -171,6 +171,7 @@ def user_result(user_id: str = "user-requester-001") -> QueryUserResult:
 
 def order_result(order_id: str = "ORD-1001") -> QueryOrderResult:
     return QueryOrderResult(
+        found=True,
         order_id=order_id,
         requester_id="user-requester-001",
         status=OrderStatus.PAID,

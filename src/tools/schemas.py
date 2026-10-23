@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal, Self, TypeAlias
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    model_validator,
+)
 
 
 class StrictModel(BaseModel):
@@ -113,14 +120,30 @@ class QueryOrderArgs(StrictModel):
 class QueryOrderResult(StrictModel):
     kind: Literal["query_order"] = "query_order"
     order_id: Identifier
-    requester_id: Identifier
-    status: OrderStatus
+    found: bool
+    requester_id: Identifier | None = None
+    status: OrderStatus | None = None
     refundable_amount: Annotated[
         Decimal,
         Field(ge=Decimal("0"), max_digits=12, decimal_places=2),
-    ]
-    currency: Literal["USD"]
-    version: int = Field(ge=1)
+    ] | None = None
+    currency: Literal["USD"] | None = None
+    version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def enforce_found_order_shape(self) -> Self:
+        details = (
+            self.requester_id,
+            self.status,
+            self.refundable_amount,
+            self.currency,
+            self.version,
+        )
+        if self.found and any(value is None for value in details):
+            raise ValueError("found orders require all order details")
+        if not self.found and any(value is not None for value in details):
+            raise ValueError("not-found orders must not contain fabricated details")
+        return self
 
 
 class CheckServiceArgs(StrictModel):

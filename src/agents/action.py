@@ -8,13 +8,14 @@ and, when required, approval before the governance gateway executes them.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import cast
 
 from agents.context import ModelCallConfig, ModelClient, ModelMessage
 from agents.idempotency import compute_args_hash, generate_operation_id
 from agents.policy import WRITE_TOOL_NAMES
-from agents.schemas import ActionProposal, PendingOperation, TicketState
+from agents.schemas import ActionProposal, Intent, PendingOperation, TicketState
 from agents.supervisor import render_verified_context
 from tools.registry import AGENT_TOOL_WHITELIST, TOOL_REGISTRY
 from tools.schemas import WriteToolName
@@ -25,10 +26,48 @@ MAX_ACTION_IDENTITY_REPAIRS = 1
 class ActionProposalValidationError(RuntimeError):
     """A bounded semantic repair could not produce an owner-safe proposal."""
 
-    def __init__(self, repair_attempts: int) -> None:
+    def __init__(
+        self,
+        repair_attempts: int,
+        *,
+        validation_summary: str = "arguments.owner_id: requester_mismatch",
+    ) -> None:
         super().__init__("Action proposal failed requester-ownership validation")
         self.repair_attempts = repair_attempts
-        self.validation_summary = "arguments.owner_id: requester_mismatch"
+        self.validation_summary = validation_summary
+
+
+_EXPLICIT_USER_ID = re.compile(r"\buser-[A-Za-z0-9][A-Za-z0-9-]*\b", re.IGNORECASE)
+_UNAUTHORIZED_TOOL_DIRECTIVE_MARKERS = (
+    "越权指令",
+    "伪造审批",
+    "未经核准",
+    "prompt injection",
+    "unauthorized tool invocation",
+)
+
+
+def _is_unauthorized_tool_directive(state: TicketState) -> bool:
+    if state.get("intent") is not Intent.HIGH_RISK:
+        return False
+    query = state["user_query"].casefold()
+    return any(marker in query for marker in _UNAUTHORIZED_TOOL_DIRECTIVE_MARKERS)
+
+
+def _self_substitutes_for_explicit_other_user(
+    state: TicketState, proposal: ActionProposal
+) -> bool:
+    if proposal.tool_name not in WRITE_TOOL_NAMES:
+        return False
+    explicitly_named_users = {
+        user_id.casefold() for user_id in _EXPLICIT_USER_ID.findall(state["user_query"])
+    }
+    if not explicitly_named_users:
+        return False
+    other_users = explicitly_named_users - {state["requester_id"].casefold()}
+    if not other_users:
+        return False
+    return _proposal_owner_id(proposal) == state["requester_id"]
 
 
 def _proposal_owner_id(proposal: ActionProposal) -> str | None:
@@ -67,6 +106,12 @@ async def select_action(
     model_client: ModelClient,
     config: ModelCallConfig,
 ) -> ActionProposal:
+    if _is_unauthorized_tool_directive(state):
+        raise ActionProposalValidationError(
+            0,
+            validation_summary="request_scope: unauthorized_tool_directive",
+        )
+
     messages = [
         ModelMessage(role="system", content=system_prompt),
         ModelMessage(
@@ -87,6 +132,8 @@ async def select_action(
             config=config,
         )
         owner_id = _proposal_owner_id(proposal)
+        if _self_substitutes_for_explicit_other_user(state, proposal):
+            owner_id = "explicit-other-user-target"
         if owner_id is None or owner_id == state["requester_id"]:
             return proposal
         if attempt < MAX_ACTION_IDENTITY_REPAIRS:
@@ -102,15 +149,24 @@ async def select_action(
                 ModelMessage(
                     role="user",
                     content=(
-                        "The proposed write target ID did not match the verified "
-                        f"requester ID {state['requester_id']}. Return a corrected "
-                        "ActionProposal using that exact ID. Do not change the "
-                        "requested operation or invent another identity."
+                        "The target ID did not match the verified requester, or the "
+                        "request names a different user. Never replace "
+                        "the explicitly requested target with the current requester. "
+                        "Do not execute a write for another user; return a corrected "
+                        "proposal only when the request itself is self-service."
                     ),
                 ),
             ]
 
-    raise ActionProposalValidationError(MAX_ACTION_IDENTITY_REPAIRS)
+    summary = (
+        "arguments.owner_id: explicit_request_target_mismatch"
+        if _self_substitutes_for_explicit_other_user(state, proposal)
+        else "arguments.owner_id: requester_mismatch"
+    )
+    raise ActionProposalValidationError(
+        MAX_ACTION_IDENTITY_REPAIRS,
+        validation_summary=summary,
+    )
 
 
 def create_pending_operation(

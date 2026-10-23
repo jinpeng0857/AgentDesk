@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from enum import StrEnum
 from typing import Any, TypeVar, cast
 
 import httpx
@@ -35,8 +36,28 @@ class ModelClientError(RuntimeError):
     """Base class for every classified model failure."""
 
 
+class ModelTransportFailureKind(StrEnum):
+    """Safe, stable categories for retryable model-provider failures."""
+
+    TIMEOUT = "timeout"
+    CONNECTION = "connection"
+    SERVER_ERROR = "server_error"
+    UNKNOWN = "unknown"
+
+
 class ModelTransportError(ModelClientError):
-    """Transient infrastructure failure; the Worker may retry."""
+    """Retryable provider failure with non-sensitive diagnostic metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: ModelTransportFailureKind = ModelTransportFailureKind.UNKNOWN,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.status_code = status_code
 
 
 class ModelOutputInvalid(ModelClientError):
@@ -67,11 +88,41 @@ ResponseFormat = dict[str, object]
 
 
 def build_response_format(output_model: type[BaseModel]) -> JsonSchemaFormat:
+    schema = output_model.model_json_schema()
+
+    def remove_unsupported_regex_patterns(value: object) -> None:
+        """Keep Pydantic validation local when a provider grammar cannot parse look-arounds."""
+        if isinstance(value, dict):
+            pattern = value.get("pattern")
+            has_lookaround = isinstance(pattern, str) and any(
+                marker in pattern for marker in ("(?=", "(?!", "(?<")
+            )
+            if has_lookaround:
+                value.pop("pattern")
+            properties = value.get("properties")
+            kind_schema = properties.get("kind") if isinstance(properties, dict) else None
+            required = value.get("required")
+            if (
+                isinstance(kind_schema, dict)
+                and "const" in kind_schema
+                and isinstance(required, list)
+                and "kind" not in required
+            ):
+                # Pydantic defaults make discriminator fields optional in its
+                # JSON Schema, but the Action union cannot validate without them.
+                required.append("kind")
+            for item in value.values():
+                remove_unsupported_regex_patterns(item)
+        elif isinstance(value, list):
+            for item in value:
+                remove_unsupported_regex_patterns(item)
+
+    remove_unsupported_regex_patterns(schema)
     return {
         "type": "json_schema",
         "json_schema": {
             "name": output_model.__name__,
-            "schema": output_model.model_json_schema(),
+            "schema": schema,
             "strict": True,
         },
     }
@@ -92,6 +143,18 @@ def mentions_unsupported_response_format(error: openai.BadRequestError) -> bool:
         "json_schema conversion failed" in text or "json schema conversion failed" in text
     )
     if schema_conversion_failed:
+        return True
+
+    # vLLM's grammar backend rejects Pydantic Decimal patterns that contain
+    # look-around assertions (for example, max_digits/decimal_places). Keep
+    # the application schema in the prompt and validate its output locally.
+    unsupported_grammar_regex = (
+        "grammar error" in text
+        and "regex parse error" in text
+        and "look-around" in text
+        and "not supported" in text
+    )
+    if unsupported_grammar_regex:
         return True
 
     negative = (
@@ -172,13 +235,17 @@ class OpenAICompatibleModelClient:
         config: ModelCallConfig,
     ) -> ModelT:
         response_format = build_response_format(output_model)
-        schema_messages = include_json_schema_instruction(messages, response_format)
-        content = await self._request(schema_messages, config, response_format)
+        # The provider already receives the schema in response_format. Repeating
+        # the full JSON schema in the prompt wastes context and can push Action's
+        # tool catalogue beyond the model's context window. The fallback path
+        # adds the schema to the prompt only when JSON mode requires it.
+        request_messages = list(messages)
+        content = await self._request(request_messages, config, response_format)
         try:
             return output_model.model_validate_json(content)
         except ValidationError as first_error:
             return await self._repair(
-                schema_messages,
+                request_messages,
                 output_model,
                 config,
                 response_format,
@@ -252,13 +319,16 @@ class OpenAICompatibleModelClient:
                 fallback_messages = include_json_schema_instruction(messages, response_format)
                 return await self._request(fallback_messages, config, {"type": "json_object"})
             raise ModelConfigurationError("model provider rejected the request shape") from exc
-        except (
-            openai.APITimeoutError,
-            openai.APIConnectionError,
-            openai.RateLimitError,
-            openai.InternalServerError,
-        ) as exc:
-            raise ModelTransportError("model provider is temporarily unavailable") from exc
+        except (openai.APITimeoutError, httpx.TimeoutException) as exc:
+            raise ModelTransportError(
+                "model provider request timed out",
+                kind=ModelTransportFailureKind.TIMEOUT,
+            ) from exc
+        except (openai.APIConnectionError, httpx.ConnectError, httpx.NetworkError) as exc:
+            raise ModelTransportError(
+                "model provider connection failed",
+                kind=ModelTransportFailureKind.CONNECTION,
+            ) from exc
         except (
             openai.AuthenticationError,
             openai.PermissionDeniedError,
@@ -266,11 +336,20 @@ class OpenAICompatibleModelClient:
         ) as exc:
             raise ModelConfigurationError("model endpoint or credentials were rejected") from exc
         except openai.APIStatusError as exc:
+            if exc.status_code == 429 or 500 <= exc.status_code <= 599:
+                raise ModelTransportError(
+                    "model provider returned a retryable server status",
+                    kind=ModelTransportFailureKind.SERVER_ERROR,
+                    status_code=exc.status_code,
+                ) from exc
             raise ModelConfigurationError("model provider rejected the request") from exc
         except openai.OpenAIError as exc:
-            raise ModelTransportError("model request failed") from exc
+            raise ModelConfigurationError("model SDK rejected the request") from exc
         except httpx.HTTPError as exc:
-            raise ModelTransportError("model transport failed") from exc
+            raise ModelTransportError(
+                "model provider connection failed",
+                kind=ModelTransportFailureKind.CONNECTION,
+            ) from exc
 
         if not completion.choices:
             raise ModelOutputInvalid("model returned no choices")

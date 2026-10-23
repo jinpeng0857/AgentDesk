@@ -10,11 +10,18 @@ import pytest
 from pydantic import SecretStr
 
 from agents.context import ModelCallConfig, ModelMessage
-from agents.schemas import Intent, KnowledgeAgentOutput, RoutingDecision, RoutingReason
+from agents.schemas import (
+    ActionProposal,
+    Intent,
+    KnowledgeAgentOutput,
+    RoutingDecision,
+    RoutingReason,
+)
 from backend.integrations.model_client import (
     ModelConfigurationError,
     ModelOutputInvalid,
     ModelTransportError,
+    ModelTransportFailureKind,
     OpenAICompatibleModelClient,
 )
 from tests.support.fakes.model_client import FakeModelClient
@@ -163,7 +170,7 @@ async def test_adapter_sends_server_side_json_schema() -> None:
     assert body["think"] is False
 
 
-async def test_adapter_also_includes_exact_schema_in_system_message() -> None:
+async def test_adapter_does_not_repeat_server_schema_in_prompt() -> None:
     seen: list[httpx.Request] = []
     client = adapter(lambda _request: completion(json.dumps(ROUTING_PAYLOAD)), seen)
 
@@ -172,14 +179,45 @@ async def test_adapter_also_includes_exact_schema_in_system_message() -> None:
     )
 
     body = request_body(seen[0])
-    system_message = body["messages"][0]
-    assert isinstance(system_message, dict)
-    assert system_message["role"] == "system"
-    content = system_message["content"]
-    assert isinstance(content, str)
-    assert '"next_agent"' in content
-    assert '"reason_code"' in content
-    assert "or add fields" in content
+    messages = body["messages"]
+    assert messages == [{"role": "user", "content": "VPN 无法连接"}]
+
+
+async def test_action_schema_omits_vllm_unsupported_lookaround_patterns() -> None:
+    seen: list[httpx.Request] = []
+    payload = {
+        "tool_name": "query_user",
+        "arguments": {"kind": "query_user", "user_id": "user-001"},
+        "evidence_result_ids": [],
+    }
+    client = adapter(lambda _request: completion(json.dumps(payload)), seen)
+
+    await client.complete_structured(
+        messages=MESSAGES, output_model=ActionProposal, config=CONFIG
+    )
+
+    body = request_body(seen[0])
+    response_format = body["response_format"]
+    assert isinstance(response_format, dict)
+    json_schema = response_format["json_schema"]
+    assert isinstance(json_schema, dict)
+    schema = json_schema["schema"]
+    definitions = schema["$defs"]
+    assert isinstance(definitions, dict)
+    assert all("kind" in item["required"] for item in definitions.values())
+
+    def has_lookaround_pattern(value: object) -> bool:
+        if isinstance(value, dict):
+            pattern = value.get("pattern")
+            return (
+                isinstance(pattern, str)
+                and any(marker in pattern for marker in ("(?=", "(?!", "(?<"))
+            ) or any(has_lookaround_pattern(item) for item in value.values())
+        if isinstance(value, list):
+            return any(has_lookaround_pattern(item) for item in value)
+        return False
+
+    assert not has_lookaround_pattern(schema)
 
 
 async def test_adapter_parses_structured_content() -> None:
@@ -341,6 +379,50 @@ async def test_adapter_falls_back_when_ollama_rejects_schema_pattern_conversion(
     assert second["type"] == "json_object"
 
 
+async def test_adapter_falls_back_when_vllm_grammar_rejects_decimal_lookaround() -> None:
+    seen: list[httpx.Request] = []
+    payload = {
+        "tool_name": "query_user",
+        "arguments": {"kind": "query_user", "user_id": "user-001"},
+        "evidence_result_ids": [],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request_body(request)
+        response_format = body["response_format"]
+        assert isinstance(response_format, dict)
+        if response_format["type"] == "json_schema":
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "Grammar error: regex parse error: look-around, including "
+                            "look-ahead and look-behind, is not supported"
+                        ),
+                        "type": "BadRequestError",
+                        "param": None,
+                        "code": 400,
+                    }
+                },
+            )
+        return completion(json.dumps(payload))
+
+    client = adapter(handler, seen)
+    result = await client.complete_structured(
+        messages=MESSAGES, output_model=ActionProposal, config=CONFIG
+    )
+
+    assert result.tool_name == "query_user"
+    assert result.arguments.user_id == "user-001"
+    assert len(seen) == 2
+    response_format = request_body(seen[1])["response_format"]
+    assert response_format == {"type": "json_object"}
+    fallback_messages = request_body(seen[1])["messages"]
+    assert "tool_name" in json.dumps(fallback_messages)
+    assert "amount" in json.dumps(fallback_messages)
+
+
 async def test_adapter_does_not_fall_back_on_an_unrelated_bad_request() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -369,19 +451,35 @@ async def test_adapter_classifies_timeouts_as_retryable() -> None:
 
     client = adapter(handler)
 
-    with pytest.raises(ModelTransportError):
+    with pytest.raises(ModelTransportError) as excinfo:
         await client.complete_structured(
             messages=MESSAGES, output_model=RoutingDecision, config=CONFIG
         )
+    assert excinfo.value.kind is ModelTransportFailureKind.TIMEOUT
+
+
+async def test_adapter_classifies_connection_failures_as_retryable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    client = adapter(handler)
+
+    with pytest.raises(ModelTransportError) as excinfo:
+        await client.complete_structured(
+            messages=MESSAGES, output_model=RoutingDecision, config=CONFIG
+        )
+    assert excinfo.value.kind is ModelTransportFailureKind.CONNECTION
 
 
 async def test_adapter_classifies_server_errors_as_retryable() -> None:
     client = adapter(lambda _request: httpx.Response(503, json={"error": "unavailable"}))
 
-    with pytest.raises(ModelTransportError):
+    with pytest.raises(ModelTransportError) as excinfo:
         await client.complete_structured(
             messages=MESSAGES, output_model=RoutingDecision, config=CONFIG
         )
+    assert excinfo.value.kind is ModelTransportFailureKind.SERVER_ERROR
+    assert excinfo.value.status_code == 503
 
 
 async def test_adapter_classifies_authentication_failure_as_non_retryable() -> None:

@@ -87,9 +87,13 @@ class SqlOrderRepository:
     async def query_order(self, args: QueryOrderArgs) -> QueryOrderResult:
         record = await self._session.get(OrderRecord, args.order_id)
         if record is None:
-            raise LookupError(f"order {args.order_id} does not exist")
+            return QueryOrderResult(
+                order_id=args.order_id,
+                found=False,
+            )
         return QueryOrderResult(
             order_id=record.id,
+            found=True,
             requester_id=record.requester_id,
             status=OrderStatus(record.status),
             refundable_amount=record.refundable_amount,
@@ -101,6 +105,7 @@ class SqlOrderRepository:
 class SqlServiceRepository:
     _ALIASES = {
         "vpn_service": "vpn",
+        "company_vpn": "vpn",
         "email_service": "mail",
         "video_conferencing": "video_conference",
         "internal_network": "intranet",

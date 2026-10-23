@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from agents.action import create_pending_operation, select_action
+from agents.action import (
+    ActionProposalValidationError,
+    create_pending_operation,
+    select_action,
+)
 from agents.context import ModelCallConfig
 from agents.knowledge import ground_knowledge
 from agents.policy import PHASE1_READ_TOOLS, WriteCapabilityDisabled, assess_phase1_read
@@ -23,7 +27,13 @@ from agents.schemas import (
 from agents.supervisor import finalize_ticket, run_supervisor
 from tests.support.fakes.model_client import FakeModelClient
 from tools.registry import TOOL_REGISTRY
-from tools.schemas import CheckServiceArgs, CreateTicketArgs, QueryUserArgs, WriteToolName
+from tools.schemas import (
+    CheckServiceArgs,
+    CreateTicketArgs,
+    QueryUserArgs,
+    RequestAccessArgs,
+    WriteToolName,
+)
 
 CONFIG = ModelCallConfig(model="test-model", prompt_version="1.0.0")
 SYSTEM_PROMPT = "You are the AgentDesk Supervisor."
@@ -256,6 +266,7 @@ async def test_action_receives_only_its_whitelisted_tool_schemas() -> None:
     assert "create_ticket" in content
     assert "request_access" in content
     assert "search_knowledge" not in content
+    assert "Verified requester ID: user-requester-001" in content
 
 
 async def test_action_returns_the_model_proposal_unchanged() -> None:
@@ -274,6 +285,64 @@ async def test_action_returns_the_model_proposal_unchanged() -> None:
     )
 
     assert output == proposal
+
+
+async def test_action_retries_write_proposal_with_unverified_requester_id() -> None:
+    invalid = ActionProposal(
+        tool_name="request_access",
+        arguments=RequestAccessArgs(
+            requester_id="invented-user",
+            resource="VPN",
+            justification="Work access",
+        ),
+        evidence_result_ids=[],
+    )
+    corrected = ActionProposal(
+        tool_name="request_access",
+        arguments=RequestAccessArgs(
+            requester_id="user-requester-001",
+            resource="VPN",
+            justification="Work access",
+        ),
+        evidence_result_ids=[],
+    )
+    fake = FakeModelClient([invalid, corrected])
+
+    result = await select_action(
+        state=ticket_state(),
+        system_prompt=SYSTEM_PROMPT,
+        model_client=fake,
+        config=CONFIG,
+    )
+
+    assert result == corrected
+    assert len(fake.calls) == 2
+    assert "target ID did not match" in fake.calls[1].messages[-1].content
+
+
+async def test_action_stops_after_bounded_identity_repairs() -> None:
+    invalid = ActionProposal(
+        tool_name="request_access",
+        arguments=RequestAccessArgs(
+            requester_id="invented-user",
+            resource="VPN",
+            justification="Work access",
+        ),
+        evidence_result_ids=[],
+    )
+    fake = FakeModelClient([invalid, invalid])
+
+    with pytest.raises(ActionProposalValidationError) as excinfo:
+        await select_action(
+            state=ticket_state(),
+            system_prompt=SYSTEM_PROMPT,
+            model_client=fake,
+            config=CONFIG,
+        )
+
+    assert excinfo.value.validation_summary == "arguments.owner_id: requester_mismatch"
+    assert excinfo.value.repair_attempts == 1
+    assert len(fake.calls) == 2
 
 
 def test_create_pending_operation_produces_valid_contract() -> None:

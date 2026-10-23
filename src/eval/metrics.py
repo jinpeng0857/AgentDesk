@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -114,7 +115,12 @@ def compute_policy_decision_accuracy(
     results: Sequence[CaseExecutionResult],
     dataset: GoldenDataset,
 ) -> Decimal:
-    """Computes whether Policy risk level & require_human match expected."""
+    """Score only decisions for the reviewed target write tools.
+
+    Case-level risk labels describe the intended operation, not an accidentally
+    selected tool. Excluding off-target decisions keeps routing errors in the
+    routing/tool metrics instead of attributing them to Policy.
+    """
     cases = _case_map(dataset)
     matches = 0
     evaluated = 0
@@ -123,9 +129,11 @@ def compute_policy_decision_accuracy(
         if r.case_id not in cases:
             continue
         expected = cases[r.case_id]
-        observations: list[tuple[str, bool]] = [
-            (str(observation.risk_level), observation.require_human)
+        expected_tools = set(expected.expected_tools)
+        observations = [
+            observation
             for observation in r.policy_decisions
+            if observation.tool_name in expected_tools
         ]
         if (
             not observations
@@ -134,18 +142,71 @@ def compute_policy_decision_accuracy(
         ):
             # Compatibility for unit-level metric callers that provide one
             # measured decision in the legacy scalar fields.
-            observations.append((str(r.predicted_risk), r.actual_require_human))
-        for observed_risk, observed_require_human in observations:
+            # Legacy scalar observations have no tool attribution and cannot
+            # support a defensible operation-level Policy score.
+            observations = []
+        for observation in observations:
             evaluated += 1
-            risk_match = (
-                observed_risk.lower()
-                == str(expected.expected_risk.value).lower()
+            is_expected_high = expected.expected_require_human
+            expected_risk = (
+                expected.expected_risk.value
+                if observation.tool_name == "process_refund" or is_expected_high
+                else {
+                    "create_ticket": "low",
+                    "request_access": "medium",
+                    "reset_password": "medium",
+                }.get(observation.tool_name, expected.expected_risk.value)
             )
-            human_match = observed_require_human == expected.expected_require_human
-            if risk_match and human_match:
+            allowed_matches = observation.allowed == (
+                str(expected.expected_outcome.value).lower() != "escalated"
+            )
+            if (
+                str(observation.risk_level).lower() == str(expected_risk).lower()
+                and observation.require_human == is_expected_high
+                and allowed_matches
+            ):
                 matches += 1
 
     return _round_dec(matches / evaluated) if evaluated > 0 else Decimal("0.0000")
+
+
+def compute_policy_decision_coverage(
+    results: Sequence[CaseExecutionResult], dataset: GoldenDataset
+) -> Decimal:
+    """Fraction of cases with an expected write tool that produced a Policy observation."""
+    cases = _case_map(dataset)
+    expected = {
+        case.case_id
+        for case in dataset.cases
+        if set(case.expected_tools).intersection(
+            {"create_ticket", "request_access", "reset_password", "process_refund"}
+        )
+    }
+    if not expected:
+        return Decimal("1.0000")
+    observed = {
+        result.case_id
+        for result in results
+        if result.case_id in expected
+        and any(
+            observation.tool_name in set(cases[result.case_id].expected_tools)
+            for observation in result.policy_decisions
+        )
+    }
+    return _round_dec(len(observed) / len(expected))
+
+
+def count_policy_decisions_evaluated(
+    results: Sequence[CaseExecutionResult], dataset: GoldenDataset
+) -> int:
+    cases = _case_map(dataset)
+    return sum(
+        1
+        for result in results
+        if result.case_id in cases
+        for observation in result.policy_decisions
+        if observation.tool_name in set(cases[result.case_id].expected_tools)
+    )
 
 
 def compute_high_risk_bypass_count(
@@ -170,6 +231,10 @@ def compute_task_success_rate(
         if (
             r.actual_outcome is not None
             and str(r.actual_outcome).lower() == str(expected.expected_outcome.value).lower()
+            and Counter(r.actual_tools) == Counter(expected.expected_tools)
+            and r.error_code is None
+            and not r.high_risk_bypass
+            and not any(outcome == "failed_final" for outcome in r.tool_outcomes)
         ):
             successes += 1
 
@@ -235,12 +300,11 @@ def compute_redundant_tool_call_rate(
     for r in results:
         if r.case_id not in cases:
             continue
-        expected = set(cases[r.case_id].expected_tools)
         actual = r.actual_tools
         total_calls += len(actual)
         seen: set[str] = set()
         for tool in actual:
-            if tool not in expected or tool in seen:
+            if tool in seen:
                 redundant_calls += 1
             seen.add(tool)
 
@@ -280,6 +344,7 @@ def compute_all_metrics(
         handoff_accuracy=compute_handoff_accuracy(results, dataset),
         tool_selection_jaccard=compute_tool_selection_jaccard(results, dataset),
         policy_decision_accuracy=compute_policy_decision_accuracy(results, dataset),
+        policy_decision_coverage=compute_policy_decision_coverage(results, dataset),
         high_risk_bypass_count=compute_high_risk_bypass_count(results),
         task_success_rate=compute_task_success_rate(results, dataset),
         retrieval_precision=prec,
@@ -290,11 +355,7 @@ def compute_all_metrics(
         human_escalation_rate=compute_human_escalation_rate(results),
         total_cases=len(results),
         failed_cases=failed_count,
-        policy_decisions_evaluated=sum(
-            len(result.policy_decisions)
-            or int(result.predicted_risk is not None and result.actual_require_human is not None)
-            for result in results
-        ),
+        policy_decisions_evaluated=count_policy_decisions_evaluated(results, dataset),
     )
 
 
@@ -425,5 +486,6 @@ def evaluate_thresholds(
             if baseline is not None
             else "design_gate",
             "policy_decisions_evaluated": metrics.policy_decisions_evaluated,
+            "policy_decision_coverage": float(metrics.policy_decision_coverage),
         },
     )

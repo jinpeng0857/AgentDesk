@@ -146,7 +146,9 @@ TOOL_REGISTRY = MappingProxyType(
                 "Side effects: write. Required inputs: requester_id, resource, and justification. "
                 "Result: access request ID and status; this never grants access directly. "
                 "Sensitive data: requester and justification must be redacted in audit. "
-                "Approval: Policy is required; allowed self-requests need no human in this MVP."
+                "Approval: Policy is required; ordinary self-requests need no human, "
+                "but administrator, privileged, root, or equivalent access requires "
+                "human approval before request creation."
             ),
             side_effects="write",
             risk_level="medium",

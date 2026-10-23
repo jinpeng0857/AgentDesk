@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from arq import Retry
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agents.context import ModelClient
-from agents.schemas import TicketStatus
+from agents.schemas import TicketState, TicketStatus
 from backend.config import AppSettings
 from backend.db.models import TicketRecord
 from backend.db.repositories.approvals import ApprovalConflictError, ApprovalRepository
@@ -23,8 +25,10 @@ from backend.governance.audit import ToolAttempt
 from backend.governance.executor import ReadToolExecutor, ToolAdapters
 from backend.graph.builder import build_ticket_graph
 from backend.graph.context import GraphContext
+from backend.graph.edges import advance_dispatch
 from backend.graph.state import initial_ticket_state
 from backend.integrations.knowledge_store import ChromaKnowledgeStore
+from backend.integrations.model_client import ModelOutputInvalid, ModelTransportError
 from backend.integrations.prompt_loader import LoadedPrompt
 from backend.integrations.tool_adapters import (
     DisabledAccessRequestService,
@@ -36,6 +40,8 @@ from backend.jobs.context import WorkerContext
 
 START_TICKET_JOB = "start_ticket"
 RESUME_TICKET_JOB = "resume_ticket"
+MAX_MODEL_TRANSPORT_JOB_TRIES = 3
+MODEL_TRANSPORT_RETRY_DELAY_S = 5
 
 
 def start_job_id(ticket_id: str) -> str:
@@ -155,14 +161,66 @@ class GraphTicketRunner:
             graph = self._build_default_graph(record)
 
         final_status = current_status
-        async for state in graph.astream(input_state, config=config, stream_mode="values"):
-            async with self._session_factory() as session:
-                repo = TicketRepository(session)
-                await repo.sync_projection(state)
-                await session.commit()
-            final_status = TicketStatus(state["status"])
+        try:
+            async for state in graph.astream(input_state, config=config, stream_mode="values"):
+                async with self._session_factory() as session:
+                    repo = TicketRepository(session)
+                    await repo.sync_projection(state)
+                    await session.commit()
+                final_status = TicketStatus(state["status"])
+        except ModelOutputInvalid:
+            return await self.fail(str(ticket_uuid), "model_output_invalid")
 
         return final_status
+
+    async def fail(self, ticket_id: str | uuid.UUID, failure_code: str) -> TicketStatus:
+        """Use the graph's Dispatcher-owned escalation node to close failed runs."""
+        ticket_uuid = uuid.UUID(str(ticket_id))
+        thread_id = str(ticket_uuid)
+        async with self._session_factory() as session:
+            repo = TicketRepository(session)
+            record = await repo.get(ticket_uuid)
+            if record is None:
+                raise LookupError(f"Ticket {ticket_id} does not exist")
+            if TicketStatus(record.status) in {
+                TicketStatus.RESOLVED,
+                TicketStatus.ESCALATED,
+                TicketStatus.REJECTED,
+                TicketStatus.FAILED,
+                TicketStatus.EXPIRED,
+            }:
+                return TicketStatus(record.status)
+
+        config = {"configurable": {"thread_id": thread_id}}
+        if self._graph is not None:
+            graph = self._graph
+        elif self._graph_factory is not None:
+            graph = self._graph_factory(record)
+        else:
+            graph = self._build_default_graph(record)
+
+        snapshot = await graph.aget_state(config)
+        state = dict(snapshot.values) if snapshot.values else initial_ticket_state(record)
+        next_state = cast(TicketState, state)
+        action = f"worker_failure:{failure_code}"[:200]
+        advanced = advance_dispatch(
+            next_state,
+            actor="dispatcher",
+            action=action,
+            next_status=TicketStatus.ESCALATED,
+        )
+        updates = {
+            "status": advanced["status"],
+            "agent_history": advanced["agent_history"],
+            "step_count": advanced["step_count"],
+        }
+        await graph.aupdate_state(config, updates, as_node="escalate")
+
+        async with self._session_factory() as session:
+            repo = TicketRepository(session)
+            await repo.sync_projection(advanced)
+            await session.commit()
+        return TicketStatus(advanced["status"])
 
     async def resume(
         self, ticket_id: str | uuid.UUID, approval_id: str | uuid.UUID
@@ -246,9 +304,33 @@ class GraphTicketRunner:
         return build_ticket_graph(context, checkpointer=self._checkpointer)
 
 
-async def start_ticket(ctx: dict[str, Any], ticket_id: str) -> None:
-    await worker_context(ctx).runner.run(ticket_id)
+async def _run_ticket_job(
+    ctx: dict[str, Any], ticket_id: str, operation: Callable[[], Awaitable[TicketStatus]]
+) -> TicketStatus:
+    runner = worker_context(ctx).runner
+    try:
+        return await operation()
+    except (ModelTransportError, DBAPIError, TimeoutError) as exc:
+        job_try = ctx.get("job_try", 1)
+        current_try = job_try if isinstance(job_try, int) and not isinstance(job_try, bool) else 1
+        if current_try < MAX_MODEL_TRANSPORT_JOB_TRIES:
+            raise Retry(defer=MODEL_TRANSPORT_RETRY_DELAY_S) from None
+        failure_code = "model_transport_exhausted" if isinstance(exc, ModelTransportError) else (
+            "worker_infrastructure_exhausted"
+        )
+        return await runner.fail(ticket_id, failure_code)
+    except ApprovalConflictError:
+        raise
+    except Exception as exc:
+        failure_code = f"worker_error:{type(exc).__name__}"
+        return await runner.fail(ticket_id, failure_code)
 
 
-async def resume_ticket(ctx: dict[str, Any], ticket_id: str, approval_id: str) -> None:
-    await worker_context(ctx).runner.resume(ticket_id, approval_id)
+async def start_ticket(ctx: dict[str, Any], ticket_id: str) -> TicketStatus:
+    runner = worker_context(ctx).runner
+    return await _run_ticket_job(ctx, ticket_id, lambda: runner.run(ticket_id))
+
+
+async def resume_ticket(ctx: dict[str, Any], ticket_id: str, approval_id: str) -> TicketStatus:
+    runner = worker_context(ctx).runner
+    return await _run_ticket_job(ctx, ticket_id, lambda: runner.resume(ticket_id, approval_id))

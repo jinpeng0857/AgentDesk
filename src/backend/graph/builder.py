@@ -125,6 +125,7 @@ def build_ticket_graph(
             "policy": "policy",
             "action_execute": "action_execute",
             "supervisor": "supervisor",
+            "finalizer": "finalizer",
             "escalated": "escalate",
         },
     )

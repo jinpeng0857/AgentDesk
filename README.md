@@ -135,13 +135,14 @@ uv run python -m eval.run_eval --mode live --stage model-baseline `
   --output artifacts/evaluation/candidates/qwen3-8b-model-baseline.local.json
 ```
 
-完整图候选需使用独立的 PostgreSQL `*_test` 数据库，并让全部 80 条固定样例逐条经过真实模型、图、工具网关与 checkpoint：
+完整图候选需使用独立的 PostgreSQL `*_test` 数据库，让完整 80 条固定样例经过真实模型、图、工具网关与 checkpoint。`--concurrency` 控制并行图任务上限（默认 4，最大 8）；只读样例可并发，包含写 Tool 的样例会独占模拟数据夹具并在完成后恢复。artifact 同时记录配置并发度与实测最大并发度：
 
 ```powershell
 $env:EVAL_TEST_DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_eval_test"
 uv run python -m eval.run_eval --mode live --stage e2e-candidate `
   --model qwen3:8b --base-url http://localhost:11434/v1 --api-key ollama `
   --database-url $env:EVAL_TEST_DATABASE_URL `
+  --concurrency 4 `
   --output artifacts/evaluation/candidates/qwen3-8b-e2e-candidate.local.json
 ```
 

@@ -23,6 +23,7 @@ invariants:
   - Action never executes a write before Policy.
   - Model output never supplies operation_id or args_hash.
   - Approved operation arguments never change during resume.
+  - Requester-scoped arguments use the trusted requester ID from API state, never an untrusted identity in the request.
   - Untrusted user input cannot bypass deterministic policy or approval gates.
 failure_codes:
   - MODEL_OUTPUT_INVALID

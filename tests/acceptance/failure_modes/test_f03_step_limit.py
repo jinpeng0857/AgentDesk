@@ -16,9 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agents.schemas import (
     Intent,
     KnowledgeAgentOutput,
+    PendingOperation,
     RoutingDecision,
     RoutingReason,
     TicketStatus,
+    ToolOutcome,
+    ToolResult,
 )
 from backend.config import AppSettings
 from backend.db.models import (
@@ -53,7 +56,7 @@ from tests.support.fakes.tools import (
 )
 
 
-async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
+async def test_f03_no_progress_graph_loop_escalates_before_step_limit(
 
     session_factory: async_sessionmaker[AsyncSession],
 
@@ -65,7 +68,7 @@ async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
 
 ) -> None:
 
-    """F-03: Graph cycle terminates at step 15 without a 16th step.
+    """F-03: A repeated no-progress Knowledge handoff escalates early.
 
 
 
@@ -73,7 +76,8 @@ async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
 
     Supervisor -> Knowledge -> Supervisor -> Knowledge ...
 
-    Must halt at MAX_STEPS = 15, transition to escalated, and never invoke a 16th step.
+    The same Knowledge route must not be repeated after its result is available.
+    The global MAX_STEPS = 15 remains the backstop for other graph cycles.
 
     Final status: escalated.
 
@@ -318,7 +322,7 @@ async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
 
 
 
-    # Verify ticket projection in database: step_count == 15 and status == escalated
+    # Two supervisor decisions, one Knowledge pass, and the escalation dispatch.
 
     async with session_factory() as session:
 
@@ -328,7 +332,7 @@ async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
 
         assert ticket.status == "escalated"
 
-        assert ticket.step_count == 15
+        assert ticket.step_count == 4
 
 
 
@@ -342,7 +346,8 @@ async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
 
         state_history = checkpoint["channel_values"]["agent_history"]
 
-        assert len(state_history) == 15
+        assert len(state_history) == 4
+        assert len(fake_model.calls) == 3
 
 
 
@@ -359,3 +364,54 @@ async def test_f03_graph_loop_halts_at_max_steps_and_escalates(
         )
 
         assert refund_count == 0
+
+
+def test_f03_repeated_successful_write_is_finalized_without_second_execution() -> None:
+    """A new operation_id cannot turn an already completed write into a new step."""
+    from datetime import UTC, datetime
+
+    from backend.graph.edges import route_from_action
+    from backend.graph.state import initial_ticket_state
+
+    ticket_id = uuid.UUID("b786ff16-f8b7-420a-9ccf-b83f76755978")
+    record = TicketRecord(
+        id=ticket_id,
+        thread_id=str(ticket_id),
+        requester_id=REQUESTER_ID,
+        user_query="Request repository access",
+        trace_id=uuid.UUID("efed6bb0-2f9c-4454-a9f4-511992dc1c86"),
+        status="running",
+        step_count=4,
+    )
+    state = initial_ticket_state(record)
+    state["pending_operation"] = PendingOperation(
+        operation_id="operation-2",
+        tool_name="request_access",
+        validated_args={
+            "kind": "request_access",
+            "requester_id": REQUESTER_ID,
+            "resource": "repo:agentdesk",
+            "justification": "Engineering work",
+        },
+        args_hash="a" * 64,
+        side_effects="write",
+        evidence_result_ids=[],
+        proposed_by="action",
+        proposed_at=datetime.now(UTC),
+        schema_version="1.0.0",
+    )
+    state["tool_results"] = [
+        ToolResult(
+            request_id="request-1",
+            operation_id="operation-1",
+            tool_name="request_access",
+            outcome=ToolOutcome.SUCCEEDED,
+            data=None,
+            error_code=None,
+            retry_count=0,
+            latency_ms=1,
+        )
+    ]
+
+    assert route_from_action(state) == "finalizer"
+    assert len(state["tool_results"]) == 1

@@ -55,12 +55,13 @@ acceptance:
     source_constraint: AGENTS.md §2 H-07; MAX_STEPS is fixed at 15 and escalates
     test_nodes:
       - tests/unit/test_routing.py::test_advance_dispatch_halts_at_max_steps
-      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_graph_loop_halts_at_max_steps_and_escalates
+      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_no_progress_graph_loop_escalates_before_step_limit
   - <<: *defaults
     id: H-08
     source_constraint: AGENTS.md §2 H-08; every write is assessed and high risk requires approval
     test_nodes:
       - tests/unit/test_policy.py::test_refund_at_threshold_is_high_risk_and_requires_human
+      - tests/unit/test_policy.py::test_privileged_self_access_request_requires_human_approval
       - tests/integration/test_graph_hitl.py::test_high_risk_refund_interrupts_at_waiting_approval
   - <<: *defaults
     id: H-09
@@ -151,6 +152,7 @@ acceptance:
     test_nodes:
       - tests/unit/test_model_client.py::test_fake_returns_responses_in_declared_order
       - tests/unit/test_model_client.py::test_adapter_sends_server_side_json_schema
+      - tests/unit/test_model_client.py::test_adapter_falls_back_when_ollama_rejects_schema_pattern_conversion
   - <<: *defaults
     id: H-24
     source_constraint: AGENTS.md §2 H-24; API creates and queues tickets without running the graph
@@ -208,23 +210,27 @@ acceptance:
     dependencies:
       - Python 3.12
       - fixed model response sequence
-    expected_result: Escalated after the fixed repair budget; audit and zero side effects are asserted.
+    expected_result: Supervisor and Knowledge invalid outputs, Action schema failures, and requester-identity mismatches after one bounded semantic repair terminate through Dispatcher escalation; safe diagnostics, trace, and zero write side effects are asserted.
     evidence_location: docs/acceptance/current.md and CI backend-checks test output
     test_nodes:
       - tests/acceptance/failure_modes/test_f02_invalid_model.py::test_f02_invalid_model_structure_escalates_after_failed_repairs
+      - tests/acceptance/failure_modes/test_f02_invalid_model.py::test_f02_agent_output_exhaustion_escalates_and_persists_dispatch_trace
   - <<: *defaults
     id: F-03
-    source_constraint: AGENTS.md §6.3 F-03; graph loop capped at step 15
+    source_constraint: AGENTS.md §6.3 F-03; no-progress handoffs stop early and graph loop capped at step 15
     test_level: deterministic failure acceptance
     commands:
       - uv run pytest tests/acceptance/failure_modes/test_f03_step_limit.py -q
     dependencies:
       - Python 3.12
       - fixed loop decision sequence
-    expected_result: Escalated at MAX_STEPS with a fixed step count, audit and no post-limit tool invocation.
+    expected_result: Repeated no-progress Knowledge handoff stops early; a repeated successful write proposal finalizes from the existing result without executing again; MAX_STEPS=15 remains the global backstop.
     evidence_location: docs/acceptance/current.md and CI backend-checks test output
     test_nodes:
-      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_graph_loop_halts_at_max_steps_and_escalates
+      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_no_progress_graph_loop_escalates_before_step_limit
+      - tests/acceptance/failure_modes/test_f03_step_limit.py::test_f03_repeated_successful_write_is_finalized_without_second_execution
+      - tests/unit/test_action_tool_routing.py::test_repeated_successful_read_proposal_routes_to_finalizer_without_execution
+      - tests/unit/test_action_tool_routing.py::test_repeated_successful_write_proposal_routes_to_finalizer_without_execution
   - <<: *defaults
     id: F-04
     source_constraint: AGENTS.md §6.3 F-04; unknown and unauthorized Tool rejection

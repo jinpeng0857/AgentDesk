@@ -13,6 +13,7 @@ what may be retried:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any, TypeVar, cast
 
@@ -40,6 +41,19 @@ class ModelTransportError(ModelClientError):
 
 class ModelOutputInvalid(ModelClientError):
     """The model did not return usable structured output."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        output_model: str = "unknown",
+        validation_summary: str = "invalid structure",
+        repair_attempts: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.output_model = output_model
+        self.validation_summary = validation_summary
+        self.repair_attempts = repair_attempts
 
 
 class ModelConfigurationError(ModelClientError):
@@ -74,6 +88,12 @@ def summarize_validation_error(error: ValidationError) -> str:
 
 def mentions_unsupported_response_format(error: openai.BadRequestError) -> bool:
     text = f"{error.message} {error}".lower()
+    schema_conversion_failed = (
+        "json_schema conversion failed" in text or "json schema conversion failed" in text
+    )
+    if schema_conversion_failed:
+        return True
+
     negative = (
         "not supported" in text
         or "unsupported" in text
@@ -81,6 +101,37 @@ def mentions_unsupported_response_format(error: openai.BadRequestError) -> bool:
         or "unavailable" in text
     )
     return negative and ("json_schema" in text or "response_format" in text)
+
+
+def include_json_schema_instruction(
+    messages: Sequence[ModelMessage], response_format: ResponseFormat
+) -> list[ModelMessage]:
+    """Keep the model-specific output contract when the provider only accepts JSON mode."""
+    schema_info = response_format.get("json_schema")
+    if not isinstance(schema_info, dict):
+        return list(messages)
+    schema = schema_info.get("schema")
+    if not isinstance(schema, dict):
+        return list(messages)
+
+    instruction = (
+        "You must return one JSON object that validates exactly against this schema; "
+        "do not omit required fields or add fields:\n"
+        + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+    )
+    result = list(messages)
+    if result and result[0].role == "system":
+        schema_instruction_marker = (
+            "You must return one JSON object that validates exactly against this schema"
+        )
+        if schema_instruction_marker in result[0].content:
+            return result
+        result[0] = ModelMessage(
+            role="system", content=f"{result[0].content}\n\n{instruction}"
+        )
+    else:
+        result.insert(0, ModelMessage(role="system", content=instruction))
+    return result
 
 
 class OpenAICompatibleModelClient:
@@ -121,12 +172,13 @@ class OpenAICompatibleModelClient:
         config: ModelCallConfig,
     ) -> ModelT:
         response_format = build_response_format(output_model)
-        content = await self._request(messages, config, response_format)
+        schema_messages = include_json_schema_instruction(messages, response_format)
+        content = await self._request(schema_messages, config, response_format)
         try:
             return output_model.model_validate_json(content)
         except ValidationError as first_error:
             return await self._repair(
-                messages,
+                schema_messages,
                 output_model,
                 config,
                 response_format,
@@ -166,7 +218,10 @@ class OpenAICompatibleModelClient:
 
         raise ModelOutputInvalid(
             f"model did not return valid {output_model.__name__} JSON after "
-            f"{config.max_retries} repair attempt(s)"
+            f"{config.max_retries} repair attempt(s): {errors}",
+            output_model=output_model.__name__,
+            validation_summary=errors,
+            repair_attempts=config.max_retries,
         )
 
     async def _request(
@@ -194,24 +249,7 @@ class OpenAICompatibleModelClient:
             if response_format.get("type") == "json_schema" and (
                 mentions_unsupported_response_format(exc)
             ):
-                fallback_messages = list(messages)
-                if not any("json" in m.content.lower() for m in fallback_messages):
-                    if fallback_messages and fallback_messages[0].role == "system":
-                        fallback_messages[0] = ModelMessage(
-                            role="system",
-                            content=(
-                                fallback_messages[0].content
-                                + "\n\nYou must respond with a valid JSON object"
-                                " matching the required schema."
-                            ),
-                        )
-                    else:
-                        fallback_messages.append(
-                            ModelMessage(
-                                role="user",
-                                content="Output your response in valid JSON format.",
-                            )
-                        )
+                fallback_messages = include_json_schema_instruction(messages, response_format)
                 return await self._request(fallback_messages, config, {"type": "json_object"})
             raise ModelConfigurationError("model provider rejected the request shape") from exc
         except (

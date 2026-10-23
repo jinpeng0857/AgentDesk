@@ -152,6 +152,7 @@ def test_policy_decision_accuracy_and_bypass_count(sample_dataset: GoldenDataset
             case_id="RFD-003",
             policy_decisions=[
                 PolicyDecisionObservation(
+                    tool_name="process_refund",
                     risk_level=RiskLevel.HIGH,
                     require_human=True,
                     allowed=True,
@@ -208,6 +209,15 @@ def test_trajectory_efficiency_and_redundant_tools(sample_dataset: GoldenDataset
     assert red == Decimal("0.3333")  # 1 redundant out of 3 calls = 0.3333
 
 
+def test_wrong_tool_is_selection_error_not_redundant_call(
+    sample_dataset: GoldenDataset,
+) -> None:
+    result = CaseExecutionResult(case_id="RFD-003", actual_tools=["query_order"])
+
+    assert compute_redundant_tool_call_rate([result], sample_dataset) == Decimal("0.0000")
+    assert compute_tool_selection_jaccard([result], sample_dataset) == Decimal("0.0000")
+
+
 def test_latency_p95_computation() -> None:
     results = [
         CaseExecutionResult(case_id="NET-001", latency_ms=100.0),
@@ -219,13 +229,72 @@ def test_latency_p95_computation() -> None:
     assert p95 == 1000.0
 
 
+def test_latency_p95_is_not_the_maximum_for_twenty_samples() -> None:
+    results = [
+        CaseExecutionResult(case_id=f"NET-{index:03d}", latency_ms=float(index))
+        for index in range(1, 21)
+    ]
+
+    assert compute_latency_p95_ms(results) == 19.0
+
+
 def test_task_success_rate(sample_dataset: GoldenDataset) -> None:
     results = [
-        CaseExecutionResult(case_id="NET-001", actual_outcome=TicketStatus.RESOLVED),
-        CaseExecutionResult(case_id="RFD-003", actual_outcome=TicketStatus.WAITING_APPROVAL),
+        CaseExecutionResult(
+            case_id="NET-001",
+            actual_outcome=TicketStatus.RESOLVED,
+            actual_tools=["search_knowledge"],
+        ),
+        CaseExecutionResult(
+            case_id="RFD-003",
+            actual_outcome=TicketStatus.WAITING_APPROVAL,
+            actual_tools=["process_refund"],
+        ),
     ]
     sr = compute_task_success_rate(results, sample_dataset)
     assert sr == Decimal("1.0000")
+
+
+def test_task_success_rejects_correct_terminal_state_with_wrong_tool(
+    sample_dataset: GoldenDataset,
+) -> None:
+    result = CaseExecutionResult(
+        case_id="NET-001",
+        actual_outcome=TicketStatus.RESOLVED,
+        actual_tools=["create_ticket"],
+    )
+
+    assert compute_task_success_rate([result], sample_dataset) == Decimal("0.0000")
+
+
+def test_waiting_approval_counts_proposed_high_risk_tool_as_selected(
+    sample_dataset: GoldenDataset,
+) -> None:
+    result = CaseExecutionResult(
+        case_id="RFD-003",
+        actual_outcome=TicketStatus.WAITING_APPROVAL,
+        actual_tools=["process_refund"],
+    )
+
+    assert compute_task_success_rate([result], sample_dataset) == Decimal("1.0000")
+
+
+def test_policy_accuracy_ignores_off_target_tool_decisions(
+    sample_dataset: GoldenDataset,
+) -> None:
+    result = CaseExecutionResult(
+        case_id="RFD-003",
+        policy_decisions=[
+            PolicyDecisionObservation(
+                tool_name="request_access",
+                risk_level=RiskLevel.LOW,
+                require_human=False,
+                allowed=True,
+            )
+        ],
+    )
+
+    assert compute_policy_decision_accuracy([result], sample_dataset) == Decimal("0.0000")
 
 
 def test_threshold_gate_evaluation() -> None:
@@ -245,6 +314,7 @@ def test_threshold_gate_evaluation() -> None:
         total_cases=20,
         failed_cases=0,
         policy_decisions_evaluated=1,
+        policy_decision_coverage=Decimal("1.0000"),
     )
     gate = evaluate_thresholds(passing_metrics)
     assert gate.passed is True

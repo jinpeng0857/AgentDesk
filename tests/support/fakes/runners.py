@@ -16,6 +16,10 @@ class RecordingTicketRunner:
         self.calls.append(ticket_id)
         return self.result
 
+    async def fail(self, ticket_id: str, failure_code: str) -> TicketStatus:
+        self.calls.append(f"fail:{ticket_id}:{failure_code}")
+        return TicketStatus.ESCALATED
+
 
 class UnavailableTicketRunner:
     """Fails every run, standing in for an unimplemented runtime."""
@@ -26,6 +30,10 @@ class UnavailableTicketRunner:
     async def run(self, ticket_id: str) -> TicketStatus:
         self.calls.append(ticket_id)
         raise RuntimeError(f"ticket runner is not available for {ticket_id}")
+
+    async def fail(self, ticket_id: str, failure_code: str) -> TicketStatus:
+        self.calls.append(f"fail:{ticket_id}:{failure_code}")
+        raise RuntimeError(f"ticket failure handler is not available for {ticket_id}")
 
 
 class FailingRedis:

@@ -36,10 +36,16 @@ from backend.integrations.model_client import (
 from backend.integrations.prompt_loader import build_system_message, load_all_prompts
 from eval.e2e import (
     DEFAULT_EVAL_DATABASE_URL,
+    MAX_E2E_CONCURRENCY,
     LiveEvalConfigurationError,
     run_e2e_candidate,
 )
-from eval.metrics import compute_all_metrics, compute_intent_accuracy, evaluate_thresholds
+from eval.metrics import (
+    compute_all_metrics,
+    compute_intent_accuracy,
+    compute_latency_p95_ms,
+    evaluate_thresholds,
+)
 from eval.schemas import (
     CaseExecutionResult,
     ComparisonResult,
@@ -274,6 +280,7 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
     model_name = OFFLINE_MODEL
     base_url_id = OFFLINE_BASE_URL_ID
     database_name: str | None = None
+    max_observed_concurrency = 1
     threshold_gate: dict[str, object] | None = None
 
     if args.stage == "e2e-candidate" and args.mode != "live":
@@ -386,7 +393,7 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
                 print(f"[{index}/{total}] {case_id} graph-complete", flush=True)
 
             try:
-                results, database_name = await run_e2e_candidate(
+                results, database_name, max_observed_concurrency = await run_e2e_candidate(
                     dataset=dataset,
                     model_client=client,
                     prompts=prompts,
@@ -395,6 +402,7 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
                     base_url=base_url,
                     timeout_s=args.timeout,
                     max_retries=args.max_retries,
+                    concurrency=args.concurrency,
                     progress=report_progress,
                 )
             except LiveEvalConfigurationError as exc:
@@ -431,6 +439,8 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
         worktree_diff_sha256=diff_sha,
         created_at=datetime.now(UTC),
         case_count=len(dataset.cases),
+        concurrency=args.concurrency if args.stage == "e2e-candidate" else 1,
+        max_observed_concurrency=max_observed_concurrency,
         cases=results,
         intent_match_count=intent_matches,
         failure_counts=failure_counts,
@@ -459,9 +469,7 @@ async def run(args: argparse.Namespace) -> EvalArtifact:
                     "evaluated_cases": len(results),
                     "intent_accuracy": str(intent_accuracy),
                     "intent_match_count": intent_matches,
-                    "latency_p95_ms": max(
-                        (result.latency_ms for result in results), default=0.0
-                    ),
+                    "latency_p95_ms": compute_latency_p95_ms(results),
                 }
             }
         )
@@ -528,6 +536,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--max-retries", type=int, default=2)
     parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=4,
+        help=f"maximum concurrent full-graph cases (1-{MAX_E2E_CONCURRENCY})",
+    )
+    parser.add_argument(
         "--update-baseline",
         action="store_true",
         help="write an additional review candidate; never modifies the official baseline",
@@ -538,6 +552,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--timeout must be greater than 0 and at most 120 seconds")
     if args.max_retries < 0 or args.max_retries > 2:
         parser.error("--max-retries must be between 0 and 2")
+    if not 1 <= args.concurrency <= MAX_E2E_CONCURRENCY:
+        parser.error(f"--concurrency must be between 1 and {MAX_E2E_CONCURRENCY}")
 
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

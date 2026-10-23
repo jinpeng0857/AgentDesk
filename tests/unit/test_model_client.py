@@ -163,6 +163,25 @@ async def test_adapter_sends_server_side_json_schema() -> None:
     assert body["think"] is False
 
 
+async def test_adapter_also_includes_exact_schema_in_system_message() -> None:
+    seen: list[httpx.Request] = []
+    client = adapter(lambda _request: completion(json.dumps(ROUTING_PAYLOAD)), seen)
+
+    await client.complete_structured(
+        messages=MESSAGES, output_model=RoutingDecision, config=CONFIG
+    )
+
+    body = request_body(seen[0])
+    system_message = body["messages"][0]
+    assert isinstance(system_message, dict)
+    assert system_message["role"] == "system"
+    content = system_message["content"]
+    assert isinstance(content, str)
+    assert '"next_agent"' in content
+    assert '"reason_code"' in content
+    assert "or add fields" in content
+
+
 async def test_adapter_parses_structured_content() -> None:
     client = adapter(lambda _request: completion(json.dumps(ROUTING_PAYLOAD)))
 
@@ -198,6 +217,47 @@ async def test_adapter_gives_up_after_the_retry_budget_without_echoing_output() 
         )
 
     assert secret_output not in str(excinfo.value)
+    assert "json_invalid" in str(excinfo.value)
+    assert excinfo.value.output_model == "RoutingDecision"
+    assert excinfo.value.validation_summary == "<root>: json_invalid"
+    assert excinfo.value.repair_attempts == CONFIG.max_retries
+
+
+async def test_json_object_fallback_includes_schema_in_repair_prompt() -> None:
+    seen: list[httpx.Request] = []
+    replies = iter(["{}", json.dumps(ROUTING_PAYLOAD)])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request_body(request)
+        response_format = body["response_format"]
+        assert isinstance(response_format, dict)
+        if response_format["type"] == "json_schema":
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "json_schema conversion failed: Pattern must start with '^' "
+                            "and end with '$'"
+                        ),
+                        "type": "invalid_request_error",
+                        "param": "response_format",
+                        "code": None,
+                    }
+                },
+            )
+        return completion(next(replies))
+
+    client = adapter(handler, seen)
+    await client.complete_structured(
+        messages=MESSAGES, output_model=RoutingDecision, config=CONFIG
+    )
+
+    assert len(seen) == 4
+    repair_body = request_body(seen[3])
+    repair_messages = json.dumps(repair_body["messages"])
+    assert "next_agent" in repair_messages
+    assert "reason_code" in repair_messages
 
 
 async def test_adapter_rejects_extra_fields_in_model_output() -> None:
@@ -223,6 +283,43 @@ async def test_adapter_falls_back_to_json_object_only_when_format_is_unsupported
                 json={
                     "error": {
                         "message": "response_format json_schema is not supported by this model",
+                        "type": "invalid_request_error",
+                        "param": "response_format",
+                        "code": None,
+                    }
+                },
+            )
+        return completion(json.dumps(ROUTING_PAYLOAD))
+
+    client = adapter(handler, seen)
+
+    result = await client.complete_structured(
+        messages=MESSAGES, output_model=RoutingDecision, config=CONFIG
+    )
+
+    assert result.intent is Intent.NETWORK
+    assert len(seen) == 2
+    second = request_body(seen[1])["response_format"]
+    assert isinstance(second, dict)
+    assert second["type"] == "json_object"
+
+
+async def test_adapter_falls_back_when_ollama_rejects_schema_pattern_conversion() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request_body(request)
+        response_format = body["response_format"]
+        assert isinstance(response_format, dict)
+        if response_format["type"] == "json_schema":
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "json_schema conversion failed: Pattern must start with '^' "
+                            "and end with '$'"
+                        ),
                         "type": "invalid_request_error",
                         "param": "response_format",
                         "code": None,

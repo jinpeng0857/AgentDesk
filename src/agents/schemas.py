@@ -79,6 +79,7 @@ class PolicyReason(StrEnum):
     ALLOW_SELF_SERVICE = "allow_self_service"
     ALLOW_LOW_REFUND = "allow_low_refund"
     REQUIRES_REFUND_APPROVAL = "requires_refund_approval"
+    REQUIRES_PRIVILEGED_ACCESS_APPROVAL = "requires_privileged_access_approval"
     DENY_NOT_OWNER = "deny_not_owner"
     DENY_INACTIVE_ACCOUNT = "deny_inactive_account"
     DENY_UNKNOWN_TOOL = "deny_unknown_tool"

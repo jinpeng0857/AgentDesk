@@ -59,10 +59,20 @@ class EvalArtifactMetadata(StrictModel):
 
 
 class PolicyDecisionObservation(StrictModel):
+    tool_name: ToolName
     risk_level: RiskLevel | str
     require_human: bool
     allowed: bool
     operation_id: str | None = None
+    reason_code: str | None = None
+
+
+class RoutingDecisionObservation(StrictModel):
+    intent: Intent
+    next_agent: Literal["knowledge", "action", "finalize"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    escalate: bool
+    reason_code: str
 
 
 class RetrievedReference(StrictModel):
@@ -87,6 +97,8 @@ class CaseExecutionResult(StrictModel):
     latency_ms: float = 0.0
     high_risk_bypass: bool = False
     policy_decisions: list[PolicyDecisionObservation] = Field(default_factory=list)
+    routing_decisions: list[RoutingDecisionObservation] = Field(default_factory=list)
+    tool_error_codes: list[str] = Field(default_factory=list)
     cost_usd: Decimal = Decimal("0")
     error_code: str | None = None
 
@@ -107,6 +119,7 @@ class MetricsSummary(StrictModel):
     total_cases: int
     failed_cases: int
     policy_decisions_evaluated: int
+    policy_decision_coverage: Decimal
 
 
 class MetricCheck(StrictModel):
@@ -149,7 +162,7 @@ class ComparisonResult(StrictModel):
 
 
 class EvalArtifact(StrictModel):
-    artifact_version: Literal["2.0.0"] = "2.0.0"
+    artifact_version: Literal["2.1.0"] = "2.1.0"
     run_id: str
     mode: Literal["offline", "live"]
     stage: Literal["model-baseline", "e2e-candidate"]
@@ -167,6 +180,8 @@ class EvalArtifact(StrictModel):
     worktree_diff_sha256: str
     created_at: AwareDatetime
     case_count: int
+    concurrency: int = Field(default=1, ge=1, le=8)
+    max_observed_concurrency: int = Field(default=1, ge=1, le=8)
     cases: list[EvalCaseResult]
     intent_match_count: int
     failure_counts: dict[str, int]

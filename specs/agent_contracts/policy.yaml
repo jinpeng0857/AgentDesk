@@ -14,6 +14,7 @@ invariants:
   - Deterministic rules produce every final Policy field.
   - A model may render explanation only after the decision exists.
   - High risk always requires human approval.
+  - Self-service access requests for administrator, privileged, root, or equivalent resources require human approval.
   - Unknown or unauthorized operations are denied.
 failure_codes:
   - POLICY_DENIED

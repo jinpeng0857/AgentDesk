@@ -456,7 +456,8 @@ def assess_risk(
 |---|---|---|
 | read Tool | 白名单通过 | low，自动允许 |
 | `create_ticket` | 合法请求 | low，自动允许 |
-| `request_access` | 为本人创建申请 | medium，自动允许创建申请；不直接授予权限 |
+| `request_access` | 为本人创建普通申请 | medium，自动允许创建申请；不直接授予权限 |
+| `request_access` | 资源包含管理员、特权、root 等高权限标记 | high，必须审批后才能创建申请 |
 | `reset_password` | 请求者为账号本人且账号 active | medium，自动允许 |
 | `reset_password` | 非本人 | deny |
 | `process_refund` | 本人订单且金额低于阈值 | medium，自动允许 |
@@ -924,11 +925,12 @@ class GoldenCase(BaseModel):
 | Intent Accuracy | expected intent 命中比例 |
 | Handoff Accuracy | expected/actual edge 命中比例 |
 | Tool Selection | 每例 Tool 集合 Jaccard 后取均值 |
-| Policy Accuracy | allowed/risk/require_human 全字段命中比例 |
+| Policy Accuracy | 仅对与该例已审核 expected_tools 匹配的写 Tool 决策评分；风险基准按目标写 Tool 的固定 Policy 风险矩阵及该例审批标签计算，同时检查 allowed、risk、require_human。错误 Tool 选择归入路由/工具指标，不计作 Policy 误判 |
+| Policy Decision Coverage | 含预期写 Tool 的用例中，Trace 观测到目标 Tool Policy 决策的比例；与准确率并列报告，防止低覆盖下的准确率被误读 |
 | High-risk Bypass Count | high 风险在无有效 approval 下执行次数 |
-| Task Success Rate | 实际终态与 expected outcome 一致且无约束违规的用例比例 |
+| Task Success Rate | 实际终态与 expected outcome 一致、实际 Tool 调用多重集与 expected_tools 完全一致、无执行错误、最终失败 Tool 或高风险绕过的用例比例 |
 | Trace Efficiency | `min_business_steps / actual_business_steps`，上限 1 |
-| Redundant Tool Rate | 无业务需要的重复 Tool / 总 Tool 调用 |
+| Redundant Tool Rate | 同一工单轨迹内重复调用相同 Tool 名称的次数 / 总 Tool 调用；选错或多选非预期 Tool 单独由 Tool Selection Jaccard 反映 |
 | Retrieval Precision/Recall | relevant_document_ids 与检索文档集合比较 |
 | P95 Latency | 全流程耗时 95 分位 |
 

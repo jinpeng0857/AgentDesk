@@ -21,7 +21,12 @@ from backend.integrations.prompt_loader import load_all_prompts
 from backend.jobs.context import WorkerContext
 from backend.jobs.outbox import dispatch_outbox
 from backend.jobs.serialization import json_job_deserializer, json_job_serializer
-from backend.jobs.tickets import GraphTicketRunner, resume_ticket, start_ticket
+from backend.jobs.tickets import (
+    MAX_MODEL_TRANSPORT_JOB_TRIES,
+    GraphTicketRunner,
+    resume_ticket,
+    start_ticket,
+)
 
 OUTBOX_POLL_SECONDS = 5
 
@@ -97,4 +102,4 @@ class WorkerSettings:
     on_shutdown = shutdown
     job_serializer = staticmethod(json_job_serializer)
     job_deserializer = staticmethod(json_job_deserializer)
-    max_tries = 3
+    max_tries = MAX_MODEL_TRANSPORT_JOB_TRIES

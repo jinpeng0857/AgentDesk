@@ -10,7 +10,11 @@ from typing import Any, cast
 from langgraph.types import interrupt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.action import create_pending_operation, select_action
+from agents.action import (
+    ActionProposalValidationError,
+    create_pending_operation,
+    select_action,
+)
 from agents.context import ModelCallConfig
 from agents.knowledge import ground_knowledge
 from agents.policy import WRITE_TOOL_NAMES, assess_risk
@@ -28,6 +32,7 @@ from agents.schemas import (
     TicketState,
     TicketStatus,
     ToolOutcome,
+    ToolResult,
 )
 from agents.supervisor import finalize_ticket, run_supervisor
 from backend.db.repositories.approvals import ApprovalRepository
@@ -54,6 +59,13 @@ from tools.schemas import SearchKnowledgeResult
 
 AsyncNode = Callable[[TicketState], Awaitable[dict[str, Any]]]
 SyncNode = Callable[[TicketState], dict[str, Any]]
+
+
+def checkpoint_safe_tool_result(tool_result: ToolResult) -> ToolResult:
+    """Remove reset credentials from graph state before it is checkpointed."""
+    if tool_result.tool_name == "reset_password" and tool_result.data is not None:
+        return tool_result.model_copy(update={"data": None})
+    return tool_result
 
 
 def _session_tool_adapters(
@@ -230,12 +242,20 @@ def make_action_propose_node(context: GraphContext) -> AsyncNode:
             prompt_version=prompt.version,
         )
         system_prompt = build_system_message(prompt, user_query=state["user_query"])
-        proposal = await select_action(
-            state=state,
-            system_prompt=system_prompt,
-            model_client=context.model_client,
-            config=config,
-        )
+        try:
+            proposal = await select_action(
+                state=state,
+                system_prompt=system_prompt,
+                model_client=context.model_client,
+                config=config,
+            )
+        except ActionProposalValidationError as exc:
+            raise ModelOutputInvalid(
+                "Action proposal failed deterministic requester-ownership validation",
+                output_model="ActionProposal",
+                validation_summary=exc.validation_summary,
+                repair_attempts=exc.repair_attempts,
+            ) from exc
         if not isinstance(proposal, ActionProposal):
             raise TypeError(f"Action node expected ActionProposal, got {type(proposal).__name__}")
 
@@ -442,7 +462,7 @@ def make_action_execute_node(context: GraphContext) -> AsyncNode:
             )
 
         results = list(state.get("tool_results", []))
-        results.append(tool_result)
+        results.append(checkpoint_safe_tool_result(tool_result))
         updates = {"tool_results": results}
         validate_node_output_keys("action_execute", updates)
         return updates

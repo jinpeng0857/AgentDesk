@@ -7,10 +7,14 @@ compromised Redis entry can never deserialize into arbitrary Python objects.
 from __future__ import annotations
 
 import json
-from typing import Any, NoReturn
+from typing import Any
 
 
-def _reject(value: object) -> NoReturn:
+def _json_default(value: object) -> object:
+    if isinstance(value, BaseException):
+        # ARQ serializes job results with the same serializer as queue payloads.
+        # Never persist exception text, which may contain request or provider data.
+        return {"type": type(value).__name__, "message": "job failed"}
     raise TypeError(
         f"ARQ payloads must be JSON serializable, got {type(value).__name__}"
     )
@@ -21,7 +25,7 @@ def json_job_serializer(value: object) -> bytes:
         value,
         separators=(",", ":"),
         allow_nan=False,
-        default=_reject,
+        default=_json_default,
     ).encode("utf-8")
 
 

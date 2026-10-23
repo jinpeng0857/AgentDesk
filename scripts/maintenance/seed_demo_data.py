@@ -47,7 +47,15 @@ DEMO_ORDERS: tuple[tuple[str, str, str, str, int], ...] = (
 DEMO_SERVICES: tuple[tuple[str, str, str | None], ...] = (
     ("vpn", "degraded", "INC-1001"),
     ("mail", "operational", None),
+    ("guest_wifi", "degraded", "INC-1002"),
+    ("dns", "operational", None),
+    ("video_conference", "degraded", "INC-1003"),
+    ("ldap", "operational", None),
+    ("switch", "degraded", "INC-1004"),
     ("intranet", "operational", None),
+    ("system_metrics", "operational", None),
+    ("authentication_service", "operational", None),
+    ("workerhost", "operational", None),
 )
 
 
@@ -68,6 +76,7 @@ async def seed_users(session: AsyncSession) -> int:
                 role=role,
                 active=active,
                 masked_email=f"{username[0]}***@example.com",
+                version=1,
             )
         )
     await session.flush()

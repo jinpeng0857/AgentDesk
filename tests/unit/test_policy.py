@@ -127,6 +127,24 @@ def test_request_access_for_self_is_medium_risk() -> None:
     assert decision.reason_code is PolicyReason.ALLOW_SELF_SERVICE
 
 
+def test_privileged_self_access_request_requires_human_approval() -> None:
+    op = make_pending(
+        "request_access",
+        RequestAccessArgs(
+            requester_id="usr-alice",
+            resource="核心账务系统管理员访问权限",
+            justification="临时工需要管理后台权限",
+        ),
+    )
+
+    decision = assess_risk(op, actor=AUTH_REQUESTER)
+
+    assert decision.allowed is True
+    assert decision.risk_level is RiskLevel.HIGH
+    assert decision.require_human is True
+    assert decision.reason_code is PolicyReason.REQUIRES_PRIVILEGED_ACCESS_APPROVAL
+
+
 def test_request_access_for_other_user_is_denied() -> None:
     op = make_pending("request_access", RequestAccessArgs(
         requester_id="usr-bob",

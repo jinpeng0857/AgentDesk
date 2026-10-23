@@ -7,13 +7,15 @@ graph, tools and PostgreSQL projections have produced their observations.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
 
@@ -26,6 +28,7 @@ from agents.schemas import (
     PendingOperation,
     RiskDecision,
     RiskLevel,
+    RoutingDecision,
     TicketState,
     TicketStatus,
 )
@@ -42,8 +45,9 @@ from backend.governance.executor import ReadToolExecutor
 from backend.graph.builder import build_ticket_graph
 from backend.graph.checkpointing import create_postgres_checkpointer
 from backend.graph.context import GraphContext
+from backend.integrations.model_client import ModelOutputInvalid
 from backend.integrations.prompt_loader import LoadedPrompt
-from backend.jobs.tickets import WorkerAuditSink, create_default_adapters
+from backend.jobs.tickets import GraphTicketRunner, WorkerAuditSink, create_default_adapters
 from eval.schemas import (
     EvalCaseResult,
     ExpectedHandoff,
@@ -51,6 +55,7 @@ from eval.schemas import (
     GoldenDataset,
     PolicyDecisionObservation,
     RetrievedReference,
+    RoutingDecisionObservation,
 )
 from scripts.maintenance.seed_demo_data import (
     seed_knowledge,
@@ -80,10 +85,81 @@ SEMANTIC_NODES = frozenset(
 WRITE_TOOL_NAMES = frozenset(
     {"create_ticket", "request_access", "reset_password", "process_refund"}
 )
+MAX_E2E_CONCURRENCY = 8
+
+
+class _CaseReadWriteLock:
+    """Allow read-only cases to overlap while isolating shared-fixture mutations."""
+
+    def __init__(self) -> None:
+        self._condition = asyncio.Condition()
+        self._active_readers = 0
+        self._waiting_writers = 0
+        self._writer_active = False
+
+    @asynccontextmanager
+    async def read(self) -> AsyncIterator[None]:
+        async with self._condition:
+            await self._condition.wait_for(
+                lambda: not self._writer_active and self._waiting_writers == 0
+            )
+            self._active_readers += 1
+        try:
+            yield
+        finally:
+            async with self._condition:
+                self._active_readers -= 1
+                self._condition.notify_all()
+
+    @asynccontextmanager
+    async def write(self) -> AsyncIterator[None]:
+        async with self._condition:
+            self._waiting_writers += 1
+            self._condition.notify_all()
+            try:
+                await self._condition.wait_for(
+                    lambda: not self._writer_active and self._active_readers == 0
+                )
+            except BaseException:
+                self._waiting_writers -= 1
+                self._condition.notify_all()
+                raise
+            self._waiting_writers -= 1
+            self._writer_active = True
+        try:
+            yield
+        finally:
+            async with self._condition:
+                self._writer_active = False
+                self._condition.notify_all()
 
 
 class LiveEvalConfigurationError(RuntimeError):
     """The requested E2E run is unsafe or its live dependencies are unavailable."""
+
+
+def validate_e2e_dataset(dataset: GoldenDataset) -> None:
+    """Reject smoke/subset datasets from the full E2E acceptance stage."""
+    if (
+        dataset.level != "full"
+        or dataset.review_status != "reviewed"
+        or len(dataset.cases) != 80
+    ):
+        raise LiveEvalConfigurationError(
+            "e2e-candidate requires the unchanged reviewed full dataset of exactly 80 cases"
+        )
+
+
+def _format_e2e_error(exc: Exception, node_names: list[str]) -> str:
+    """Return a safe, stable diagnostic code without model/provider payloads."""
+    if isinstance(exc, ModelOutputInvalid):
+        code = (
+            f"ModelOutputInvalid:{exc.output_model}:"
+            f"repairs={exc.repair_attempts}:validation={exc.validation_summary}"
+        )
+    else:
+        code = type(exc).__name__
+    return f"{code}:after={node_names[-1]}" if node_names else code
 
 
 def database_name(database_url: str) -> str:
@@ -143,7 +219,11 @@ def _psycopg_url(database_url: str) -> str:
 
 def derive_actual_handoffs(node_names: list[str]) -> list[ExpectedHandoff]:
     """Translate observed graph node transitions to the reviewed role-level paths."""
-    nodes = [node for node in node_names if node in SEMANTIC_NODES]
+    nodes = [
+        "approval" if node == "__interrupt__" else node
+        for node in node_names
+        if node in SEMANTIC_NODES or node == "__interrupt__"
+    ]
     handoffs: list[ExpectedHandoff] = []
 
     def add(source: str, target: str) -> None:
@@ -217,9 +297,6 @@ async def _seed_case_data(
     trace_id: uuid.UUID,
 ) -> None:
     async with session_factory() as session:
-        await seed_users(session)
-        await seed_orders(session)
-        await seed_services(session)
         record = TicketRecord(
             id=ticket_id,
             thread_id=str(ticket_id),
@@ -229,6 +306,16 @@ async def _seed_case_data(
             status=TicketStatus.QUEUED.value,
         )
         await TicketRepository(session).add(record)
+        await session.commit()
+
+
+async def _seed_shared_fixtures(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        await seed_users(session)
+        await seed_orders(session)
+        await seed_services(session)
         await session.commit()
 
 
@@ -337,6 +424,7 @@ def _build_case_result(
     state: TicketState | None,
     node_names: list[str],
     policy_decisions: list[PolicyDecisionObservation],
+    routing_decisions: list[RoutingDecisionObservation],
     ticket: TicketRecord | None,
     audits: list[ToolCallRecord],
     approvals: list[ApprovalRecord],
@@ -363,6 +451,12 @@ def _build_case_result(
         actual_status = ticket.status
     handoffs = derive_actual_handoffs(node_names)
     actual_tools = [audit.tool_name for audit in audits]
+    executed_operation_ids = {
+        audit.operation_id for audit in audits if audit.operation_id is not None
+    }
+    for approval in approvals:
+        if approval.operation_id not in executed_operation_ids:
+            actual_tools.append(approval.tool_name)
     actual_tool_outcomes = [audit.outcome for audit in audits]
 
     return EvalCaseResult(
@@ -391,6 +485,14 @@ def _build_case_result(
             audits, approvals, operations, policy_decisions
         ),
         policy_decisions=policy_decisions,
+        routing_decisions=routing_decisions,
+        tool_error_codes=[
+            result.error_code
+            for result in state.get("tool_results", [])
+            if result.error_code is not None
+        ]
+        if state is not None
+        else [],
         error_code=error_code,
         retrieved_references=retrieved_references,
         failure_code=error_code,
@@ -407,13 +509,15 @@ async def run_e2e_candidate(
     base_url: str,
     timeout_s: float = 120.0,
     max_retries: int = 2,
+    concurrency: int = 4,
     progress: Callable[[int, int, str], None] | None = None,
-) -> tuple[list[EvalCaseResult], str]:
-    """Run every reviewed case through the real graph and isolated persistence."""
+) -> tuple[list[EvalCaseResult], str, int]:
+    """Run the reviewed cases with bounded parallelism and isolated shared fixtures."""
     db_name = require_isolated_test_database(database_url)
-    if dataset.level != "full" or dataset.review_status != "reviewed" or len(dataset.cases) != 80:
+    validate_e2e_dataset(dataset)
+    if not 1 <= concurrency <= MAX_E2E_CONCURRENCY:
         raise LiveEvalConfigurationError(
-            "e2e-candidate requires the unchanged reviewed full dataset of exactly 80 cases"
+            f"E2E concurrency must be between 1 and {MAX_E2E_CONCURRENCY}"
         )
     upgrade_database(database_url)
 
@@ -437,7 +541,6 @@ async def run_e2e_candidate(
         openai_max_retries=max_retries,
         chroma_path=Path(scratch.name) / "chroma",
     )
-    all_results: list[EvalCaseResult] = []
     base_adapters = None
     try:
         await checkpoint_pool.open()
@@ -446,7 +549,37 @@ async def run_e2e_candidate(
         seed_knowledge(Path(scratch.name) / "chroma")
         base_adapters = create_default_adapters(settings)
 
-        for case_index, case in enumerate(dataset.cases, start=1):
+        # Shared demo identities/orders/services are initialized once. Mutating
+        # cases take an exclusive gate and restore the fixtures before release;
+        # read-only cases may overlap without observing another case's writes.
+        await _seed_shared_fixtures(session_factory)
+        slots = asyncio.Semaphore(concurrency)
+        fixture_gate = _CaseReadWriteLock()
+        active_cases = 0
+        max_active_cases = 0
+
+        async def evaluate_case(
+            case_index: int, case: GoldenCase
+        ) -> EvalCaseResult:
+            nonlocal active_cases, max_active_cases
+            mutating_case = any(str(tool) in WRITE_TOOL_NAMES for tool in case.expected_tools)
+            gate = fixture_gate.write() if mutating_case else fixture_gate.read()
+            async with slots, gate:
+                if mutating_case:
+                    await _seed_shared_fixtures(session_factory)
+                active_cases += 1
+                max_active_cases = max(max_active_cases, active_cases)
+                try:
+                    result = await evaluate_one_case(case_index, case)
+                finally:
+                    active_cases -= 1
+                    if mutating_case:
+                        await _seed_shared_fixtures(session_factory)
+                return result
+
+        async def evaluate_one_case(
+            case_index: int, case: GoldenCase
+        ) -> EvalCaseResult:
             ticket_id = uuid.uuid4()
             trace_id = uuid.uuid4()
             await _seed_case_data(session_factory, case, ticket_id, trace_id)
@@ -467,7 +600,9 @@ async def run_e2e_candidate(
             config = {"configurable": {"thread_id": str(ticket_id)}}
             node_names: list[str] = []
             decisions: list[PolicyDecisionObservation] = []
+            routing_decisions: list[RoutingDecisionObservation] = []
             pending_operation_id: str | None = None
+            pending_tool_name: str | None = None
             started = time.perf_counter()
             error_code: str | None = None
 
@@ -498,21 +633,50 @@ async def run_e2e_candidate(
                                 if isinstance(raw_operation, PendingOperation)
                                 else None
                             )
-                        if raw_node == "policy" and isinstance(raw_values, Mapping):
+                            pending_tool_name = (
+                                raw_operation.tool_name
+                                if isinstance(raw_operation, PendingOperation)
+                                else None
+                            )
+                        if raw_node == "supervisor" and isinstance(raw_values, Mapping):
+                            raw_route = raw_values.get("routing_decision")
+                            if isinstance(raw_route, RoutingDecision):
+                                routing_decisions.append(
+                                    RoutingDecisionObservation(
+                                        intent=raw_route.intent,
+                                        next_agent=raw_route.next_agent,
+                                        confidence=raw_route.confidence,
+                                        escalate=raw_route.escalate,
+                                        reason_code=raw_route.reason_code.value,
+                                    )
+                                )
+                        if (
+                            raw_node == "policy"
+                            and isinstance(raw_values, Mapping)
+                            and pending_tool_name is not None
+                        ):
                             raw_decision = raw_values.get("risk_decision")
                             if isinstance(raw_decision, RiskDecision):
                                 decisions.append(
                                     PolicyDecisionObservation(
+                                        tool_name=pending_tool_name,
                                         risk_level=raw_decision.risk_level,
                                         require_human=raw_decision.require_human,
                                         allowed=raw_decision.allowed,
                                         operation_id=pending_operation_id,
+                                        reason_code=raw_decision.reason_code.value,
                                     )
                                 )
             except Exception as exc:
                 # Record a stable class code, never raw exception content which
                 # could contain prompt or provider data. Continue the fixed 80.
-                error_code = type(exc).__name__
+                error_code = _format_e2e_error(exc, node_names)
+                runner = GraphTicketRunner(
+                    session_factory=session_factory,
+                    checkpointer=checkpointer,
+                    graph=graph,
+                )
+                await runner.fail(ticket_id, error_code)
 
             elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
             snapshot = await graph.aget_state(config)
@@ -526,6 +690,7 @@ async def run_e2e_candidate(
                 state=state,
                 node_names=node_names,
                 policy_decisions=decisions,
+                routing_decisions=routing_decisions,
                 ticket=ticket,
                 audits=audits,
                 approvals=approvals,
@@ -533,11 +698,17 @@ async def run_e2e_candidate(
                 elapsed_ms=elapsed_ms,
                 error_code=error_code,
             )
-            all_results.append(result)
             if progress is not None:
                 progress(case_index, len(dataset.cases), case.case_id)
+            return result
 
-        return all_results, db_name
+        all_results = await asyncio.gather(
+            *(
+                evaluate_case(case_index, case)
+                for case_index, case in enumerate(dataset.cases, start=1)
+            )
+        )
+        return list(all_results), db_name, max_active_cases
     finally:
         await checkpoint_pool.close()
         await engine.dispose()

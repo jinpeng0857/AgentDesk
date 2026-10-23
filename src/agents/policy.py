@@ -23,6 +23,17 @@ from tools.schemas import (
 )
 
 REFUND_APPROVAL_THRESHOLD_USD = Decimal("200.00")
+HIGH_RISK_ACCESS_RESOURCE_TERMS: tuple[str, ...] = (
+    "admin",
+    "administrator",
+    "privileged",
+    "root",
+    "superuser",
+    "管理员",
+    "管理权限",
+    "高权限",
+    "特权",
+)
 
 PHASE1_READ_TOOLS: frozenset[str] = frozenset(
     {"search_knowledge", "query_user", "query_order", "check_service"}
@@ -144,6 +155,18 @@ def assess_risk(
                 explanation=(
                     f"Requester {actor.user_id} cannot request access on behalf of "
                     f"{args.requester_id}."
+                ),
+            )
+        normalized_resource = args.resource.casefold()
+        if any(term in normalized_resource for term in HIGH_RISK_ACCESS_RESOURCE_TERMS):
+            return RiskDecision(
+                allowed=True,
+                risk_level=RiskLevel.HIGH,
+                require_human=True,
+                reason_code=PolicyReason.REQUIRES_PRIVILEGED_ACCESS_APPROVAL,
+                explanation=(
+                    "Privileged access requests require human approval before the "
+                    "access request can be created."
                 ),
             )
         return RiskDecision(

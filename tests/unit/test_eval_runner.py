@@ -38,6 +38,8 @@ def test_offline_eval_is_classification_harness_only(tmp_path: Path) -> None:
     assert data["stage"] == "model-baseline"
     assert data["metrics"]["scope"] == "classification_only"
     assert data["metrics"]["evaluated_cases"] == 80
+    assert data["concurrency"] == 1
+    assert data["max_observed_concurrency"] == 1
     assert "high_risk_bypass_count" not in data["metrics"]
     assert all(case["actual_tools"] == [] for case in data["cases"])
     assert data["worktree_diff_sha256"]
@@ -56,6 +58,12 @@ def test_e2e_candidate_refuses_offline_fakes(tmp_path: Path) -> None:
                 str(tmp_path / "artifact.json"),
             ]
         )
+
+
+def test_eval_runner_rejects_concurrency_above_checkpoint_pool_limit() -> None:
+    with pytest.raises(SystemExit) as error:
+        main(["--mode", "offline", "--concurrency", "9"])
+    assert error.value.code == 2
 
 
 def test_prompt_version_changes_are_reported_but_comparison_remains_comparable(

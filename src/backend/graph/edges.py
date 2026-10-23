@@ -94,6 +94,11 @@ def route_from_supervisor(state: TicketState) -> str:
         return "escalated"
 
     if decision.next_agent == "knowledge":
+        if any(
+            step.actor == "knowledge"
+            for step in state.get("agent_history", [])
+        ):
+            return "finalizer" if state.get("knowledge_refs") else "escalated"
         return "knowledge"
     if decision.next_agent == "action":
         return "action"
@@ -112,9 +117,26 @@ def route_from_action(state: TicketState) -> str:
     if state["step_count"] >= MAX_STEPS or state["status"] in TERMINAL_STATUSES:
         return "escalated"
 
-    if state.get("pending_operation") is not None:
+    pending_operation = state.get("pending_operation")
+    action_proposal = state.get("action_proposal")
+    proposed_tool = (
+        pending_operation.tool_name
+        if pending_operation is not None
+        else action_proposal.tool_name if action_proposal is not None else None
+    )
+    if proposed_tool is not None and any(
+        result.tool_name == proposed_tool
+        and result.outcome in (ToolOutcome.SUCCEEDED, ToolOutcome.CACHE_HIT)
+        for result in state.get("tool_results", [])
+    ):
+        # A repeated proposal is not a new operation merely because Action minted
+        # a fresh operation_id. Stop the model bounce deterministically; never
+        # execute the already-completed Tool again.
+        return "finalizer"
+
+    if pending_operation is not None:
         return "policy"
-    if state.get("action_proposal") is not None:
+    if action_proposal is not None:
         return "action_execute"
     return "supervisor"
 

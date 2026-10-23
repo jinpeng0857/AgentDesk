@@ -6,6 +6,7 @@ import pytest
 
 from agents.schemas import (
     Intent,
+    KnowledgeRef,
     RoutingDecision,
     RoutingReason,
     TicketStatus,
@@ -114,6 +115,45 @@ def test_route_from_supervisor_legal_targets() -> None:
         escalate=False,
         reason_code=RoutingReason.COMPLETE,
     )
+    assert route_from_supervisor(state) == "finalizer"
+
+
+def test_supervisor_cannot_repeat_knowledge_handoff_without_progress() -> None:
+    record = create_sample_ticket()
+    state = initial_ticket_state(record)
+    state["routing_decision"] = RoutingDecision(
+        intent=Intent.NETWORK,
+        next_agent="knowledge",
+        confidence=0.95,
+        escalate=False,
+        reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+    )
+    advance_dispatch(state, actor="knowledge", action="search_and_ground")
+
+    assert route_from_supervisor(state) == "escalated"
+
+
+def test_supervisor_repeated_knowledge_route_finishes_when_evidence_exists() -> None:
+    record = create_sample_ticket()
+    state = initial_ticket_state(record)
+    state["routing_decision"] = RoutingDecision(
+        intent=Intent.NETWORK,
+        next_agent="knowledge",
+        confidence=0.95,
+        escalate=False,
+        reason_code=RoutingReason.NEEDS_KNOWLEDGE,
+    )
+    state["knowledge_refs"] = [
+        KnowledgeRef(
+            document_id="doc-1",
+            chunk_id="chunk-1",
+            title="VPN guide",
+            content_excerpt="Use the supported VPN gateway.",
+            score=0.9,
+        )
+    ]
+    advance_dispatch(state, actor="knowledge", action="search_and_ground")
+
     assert route_from_supervisor(state) == "finalizer"
 
 

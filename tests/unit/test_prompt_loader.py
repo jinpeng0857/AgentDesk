@@ -21,9 +21,9 @@ EXPECTED_OUTPUT_MODELS = {
     "policy": "PolicyExplanation",
 }
 EXPECTED_PROMPT_VERSIONS = {
-    "supervisor": "1.0.6",
+    "supervisor": "1.0.7",
     "knowledge": "1.0.0",
-    "action": "1.0.1",
+    "action": "1.0.3",
     "policy": "1.0.0",
 }
 
@@ -100,3 +100,19 @@ def test_system_message_separates_untrusted_text() -> None:
     assert message.count("<<<UNTRUSTED_DATA>>>") == 2
     assert message.count("<<<END_UNTRUSTED_DATA>>>") == 2
     assert prompt.constraints.strip() in message
+
+
+def test_action_prompt_requires_exact_operation_and_no_duplicate_tool() -> None:
+    prompt = load_prompt("action")
+
+    assert "replace a denied or unavailable operation with a different write" in (
+        prompt.constraints
+    )
+    assert "successfully" in prompt.constraints
+    assert "completed Tool again" in prompt.constraints
+
+
+def test_supervisor_prompt_calibrates_routing_confidence() -> None:
+    prompt = load_prompt("supervisor")
+
+    assert "Confidence measures certainty in the intent classification" in prompt.constraints

@@ -99,11 +99,21 @@ class SqlOrderRepository:
 
 
 class SqlServiceRepository:
+    _ALIASES = {
+        "vpn_service": "vpn",
+        "email_service": "mail",
+        "video_conferencing": "video_conference",
+        "internal_network": "intranet",
+        "network_dns": "dns",
+    }
+
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def check_service(self, args: CheckServiceArgs) -> CheckServiceResult:
-        record = await self._session.get(ServiceStatusRecord, args.service_name)
+        requested_name = args.service_name.strip()
+        canonical_name = self._ALIASES.get(requested_name.casefold(), requested_name.casefold())
+        record = await self._session.get(ServiceStatusRecord, canonical_name)
         if record is None:
             # Reporting an unknown service as operational would be a fabrication.
             raise LookupError(f"service {args.service_name} is not tracked")

@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from backend.db.models import UserRecord
-from scripts.maintenance.seed_demo_data import DEMO_SERVICES, seed_users
+from scripts.maintenance.seed_demo_data import DEMO_ORDERS, DEMO_SERVICES, seed_users
 
 
 class _CaptureSession:
@@ -37,3 +37,12 @@ def test_demo_services_cover_reviewed_live_status_targets() -> None:
     names = {service[0] for service in DEMO_SERVICES}
 
     assert {"vpn", "mail", "guest_wifi", "dns", "video_conference", "ldap", "switch"} <= names
+
+
+def test_refund_orders_match_reviewed_e2e_ownership_and_amounts() -> None:
+    orders = {order[0]: order for order in DEMO_ORDERS}
+
+    assert float(orders["ORD-1001"][3]) >= 1_000.00
+    assert orders["ORD-1002"][1] == "user-requester-002"
+    assert orders["ORD-1005"][1] == "user-requester-001"
+    assert float(orders["ORD-1005"][3]) >= 500.00

@@ -83,6 +83,10 @@ class PolicyReason(StrEnum):
     DENY_NOT_OWNER = "deny_not_owner"
     DENY_INACTIVE_ACCOUNT = "deny_inactive_account"
     DENY_RESOURCE_NOT_FOUND = "deny_resource_not_found"
+    DENY_RESOURCE_UNVERIFIED = "deny_resource_unverified"
+    DENY_RESOURCE_STATE = "deny_resource_state"
+    DENY_STALE_RESOURCE = "deny_stale_resource"
+    DENY_INSUFFICIENT_REFUNDABLE_AMOUNT = "deny_insufficient_refundable_amount"
     DENY_UNKNOWN_TOOL = "deny_unknown_tool"
     DENY_UNAUTHORIZED = "deny_unauthorized"
 

@@ -21,9 +21,9 @@ EXPECTED_OUTPUT_MODELS = {
     "policy": "PolicyExplanation",
 }
 EXPECTED_PROMPT_VERSIONS = {
-    "supervisor": "1.0.8",
-    "knowledge": "1.0.0",
-    "action": "1.0.4",
+    "supervisor": "1.0.11",
+    "knowledge": "1.0.1",
+    "action": "1.0.6",
     "policy": "1.0.0",
 }
 
@@ -100,6 +100,20 @@ def test_system_message_separates_untrusted_text() -> None:
     assert message.count("<<<UNTRUSTED_DATA>>>") == 2
     assert message.count("<<<END_UNTRUSTED_DATA>>>") == 2
     assert prompt.constraints.strip() in message
+
+
+def test_supervisor_system_message_omits_the_request_already_in_user_context() -> None:
+    prompt = load_prompt("supervisor")
+    query = "账号异地频繁告警，请帮我查询安全记录并生成安全排查工单。"
+
+    message = build_system_message(
+        prompt,
+        user_query=query,
+        include_user_query=False,
+    )
+
+    assert query not in message
+    assert "UNTRUSTED USER REQUEST" not in message
 
 
 def test_action_prompt_requires_exact_operation_and_no_duplicate_tool() -> None:

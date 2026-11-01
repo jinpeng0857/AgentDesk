@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from collections import Counter
+from pathlib import Path
 
 from tools.registry import TOOL_REGISTRY
 
@@ -16,7 +17,7 @@ def _dataset():
     return loader()
 
 
-def test_golden_dataset_has_eighty_unique_reviewed_cases() -> None:
+def test_golden_dataset_is_a_reviewed_full_dataset_with_unique_cases() -> None:
     dataset = _dataset()
 
     assert dataset.version == "1.0.0"
@@ -36,6 +37,23 @@ def test_each_intent_has_sixteen_cases() -> None:
         "query": 16,
         "high_risk": 16,
     }
+
+
+def test_smoke_dataset_is_validated_by_band_instead_of_fixed_count() -> None:
+    validator = getattr(_dataset_module(), "validate_golden_dataset", None)
+    loader = getattr(_dataset_module(), "load_golden_dataset", None)
+    assert validator is not None and loader is not None
+
+    path = Path(__file__).resolve().parents[2] / "resources/evaluation/smoke_dataset.json"
+    smoke = loader(path)
+
+    assert smoke.level == "smoke"
+    assert 20 <= len(smoke.cases) <= 79
+    assert validator(smoke, require_reviewed=True) == []
+
+    mislabelled = smoke.model_copy(update={"level": "full"})
+    issues = validator(mislabelled, require_reviewed=True)
+    assert any("at least 80 cases" in issue for issue in issues)
 
 
 def test_all_expected_tools_are_registered() -> None:

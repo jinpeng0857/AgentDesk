@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from backend.integrations.model_client import ModelOutputInvalid
+import eval.e2e as e2e
+from backend.integrations.model_client import ModelConfigurationError, ModelOutputInvalid
 from eval.e2e import (
     LiveEvalConfigurationError,
     _CaseReadWriteLock,
@@ -18,6 +20,16 @@ from eval.e2e import (
     validate_e2e_dataset,
 )
 from eval.run_eval import load_dataset
+
+
+def test_retrieval_metric_reads_document_ids_from_governed_search_audit() -> None:
+    audit = SimpleNamespace(
+        tool_name="search_knowledge",
+        outcome="succeeded",
+        result_summary={"kind": "search_knowledge", "document_ids": ["doc-vpn", "doc-dns"]},
+    )
+
+    assert e2e._retrieved_document_ids_from_audits([audit]) == ["doc-vpn", "doc-dns"]
 
 
 def test_psycopg_checkpoint_url_preserves_password() -> None:
@@ -44,6 +56,16 @@ def test_e2e_error_summary_has_safe_schema_diagnostics_and_last_node() -> None:
         "ModelOutputInvalid:KnowledgeAgentOutput:repairs=2:"
         "validation=answer: missing; <root>: json_invalid:after=knowledge"
     )
+    assert secret not in summary
+
+
+def test_e2e_error_summary_records_safe_model_configuration_category() -> None:
+    secret = "provider-response-secret"
+    error = ModelConfigurationError(secret, reason_code="http_status_400")
+
+    summary = _format_e2e_error(error, ["supervisor"])
+
+    assert summary == "ModelConfigurationError:http_status_400:after=supervisor"
     assert secret not in summary
 
 
@@ -92,6 +114,23 @@ def test_write_tool_handoffs_preserve_policy_and_execution_nodes() -> None:
         ("policy", "action_execute"),
         ("action_execute", "supervisor"),
         ("supervisor", "finalize"),
+    ]
+
+
+def test_deterministic_rejection_is_reported_as_a_finalization() -> None:
+    nodes = [
+        "supervisor",
+        "dispatch_supervisor",
+        "action",
+        "dispatch_action",
+        "reject_request",
+    ]
+
+    handoffs = derive_actual_handoffs(nodes)
+
+    assert [(item.source, item.target) for item in handoffs] == [
+        ("supervisor", "action_propose"),
+        ("action_propose", "finalize"),
     ]
 
 
@@ -145,17 +184,39 @@ def test_live_eval_database_must_be_isolated() -> None:
         )
 
 
-def test_full_e2e_gate_accepts_only_reviewed_eighty_case_dataset() -> None:
+def test_e2e_gate_binds_declared_level_to_its_case_band() -> None:
     full_dataset = load_dataset(
         Path(__file__).resolve().parents[2] / "resources/evaluation/golden_dataset.json"
     )
     validate_e2e_dataset(full_dataset)
 
-    smoke_dataset = full_dataset.model_copy(
-        update={"level": "smoke", "cases": full_dataset.cases[:50]}
+    # A reviewed smoke set may exercise the real graph, but the same cases
+    # relabelled as a full evaluation are refused: the band is part of the
+    # label, so a 20-case run can never be reported as a full acceptance.
+    twenty = full_dataset.model_copy(update={"level": "smoke", "cases": full_dataset.cases[:20]})
+    validate_e2e_dataset(twenty)
+
+    mislabelled = full_dataset.model_copy(
+        update={"level": "full", "cases": full_dataset.cases[:20]}
     )
-    with pytest.raises(LiveEvalConfigurationError, match="exactly 80 cases"):
-        validate_e2e_dataset(smoke_dataset)
+    with pytest.raises(LiveEvalConfigurationError, match="at least 80 cases"):
+        validate_e2e_dataset(mislabelled)
+
+    oversized_smoke = full_dataset.model_copy(
+        update={"level": "smoke", "cases": full_dataset.cases[:80]}
+    )
+    with pytest.raises(LiveEvalConfigurationError, match="at most 79 cases"):
+        validate_e2e_dataset(oversized_smoke)
+
+    unreviewed = full_dataset.model_copy(
+        update={
+            "level": "smoke",
+            "review_status": "pending_review",
+            "cases": full_dataset.cases[:20],
+        }
+    )
+    with pytest.raises(LiveEvalConfigurationError, match="human-reviewed"):
+        validate_e2e_dataset(unreviewed)
 
 
 async def test_case_gate_allows_readers_concurrently_and_excludes_writers() -> None:

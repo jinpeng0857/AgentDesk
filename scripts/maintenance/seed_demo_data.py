@@ -39,8 +39,9 @@ DEMO_USERS: tuple[tuple[str, str, str, str, bool], ...] = (
 )
 
 DEMO_ORDERS: tuple[tuple[str, str, str, str, int], ...] = (
-    ("ORD-1001", "user-requester-001", "paid", "50.00", 2),
-    ("ORD-1002", "user-requester-001", "paid", "200.00", 3),
+    ("ORD-1001", "user-requester-001", "paid", "1000.00", 2),
+    ("ORD-1002", "user-requester-002", "paid", "200.00", 3),
+    ("ORD-1005", "user-requester-001", "paid", "500.00", 1),
     ("ORD-2001", "user-requester-002", "paid", "75.00", 1),
 )
 

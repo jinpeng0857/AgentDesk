@@ -266,10 +266,11 @@ acceptance:
     dependencies:
       - Python 3.12
       - PostgreSQL 17 isolated _test database
-    expected_result: Governance rejects the injected write, creates audit, and records zero side effects.
+    expected_result: The injected request is rejected with graph trace and zero tool calls or refunds; direct gateway bypass attempts are audited as rejected.
     evidence_location: docs/acceptance/current.md and CI backend-checks test output
     test_nodes:
       - tests/acceptance/failure_modes/test_f06_prompt_injection.py::test_f06_prompt_injection_cannot_bypass_policy_or_approval_gates
+      - tests/acceptance/failure_modes/test_f06_prompt_injection.py::test_f06_chinese_unauthorized_directive_is_rejected_before_any_tool_call
   - <<: *defaults
     id: F-07
     source_constraint: AGENTS.md §6.3 F-07; worker crash after checkpoint/ledger commit

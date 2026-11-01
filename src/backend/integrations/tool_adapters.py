@@ -103,21 +103,81 @@ class SqlOrderRepository:
 
 
 class SqlServiceRepository:
+    """Service-state reads with deterministic display-name resolution.
+
+    The model receives user wording (often Chinese), while the tracked service
+    keys are canonical ASCII identifiers. Resolving aliases here keeps the
+    lookup deterministic and prevents a known service from being misreported as
+    an execution failure.
+    """
+
     _ALIASES = {
         "vpn_service": "vpn",
         "company_vpn": "vpn",
+        "vpn服务": "vpn",
+        "公司vpn": "vpn",
         "email_service": "mail",
+        "mail_service": "mail",
+        "邮件服务": "mail",
+        "邮件系统": "mail",
+        "邮件": "mail",
         "video_conferencing": "video_conference",
+        "video_conference_service": "video_conference",
+        "视频会议": "video_conference",
+        "视频会议服务": "video_conference",
+        "访客wifi": "guest_wifi",
+        "访客wi-fi": "guest_wifi",
+        "访客网络": "guest_wifi",
         "internal_network": "intranet",
+        "内网": "intranet",
+        "内网服务": "intranet",
         "network_dns": "dns",
+        "dns_service": "dns",
+        "dns服务": "dns",
+        "内网dns": "dns",
+        "ldap_service": "ldap",
+        "ldap服务": "ldap",
+        "统一身份认证": "ldap",
+        "统一身份认证服务": "ldap",
+        "交换机": "switch",
+        "核心交换机": "switch",
+        "authentication_service": "authentication_service",
+        "认证服务": "authentication_service",
+        "统一认证": "authentication_service",
+        "system_metrics": "system_metrics",
+        "系统指标": "system_metrics",
+        "worker_host": "workerhost",
+        "worker宿主机": "workerhost",
     }
+
+    _GENERIC_SUFFIXES = ("服务器", "服务", "系统", "平台")
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    @classmethod
+    def resolve_service_name(cls, requested_name: str) -> str:
+        key = " ".join(requested_name.strip().casefold().split())
+        compact = key.replace(" ", "")
+        if key in cls._ALIASES:
+            return cls._ALIASES[key]
+        if compact in cls._ALIASES:
+            return cls._ALIASES[compact]
+        for suffix in cls._GENERIC_SUFFIXES:
+            if key.endswith(suffix):
+                trimmed = key[: -len(suffix)]
+                if trimmed in cls._ALIASES:
+                    return cls._ALIASES[trimmed]
+        for pattern, canonical in sorted(
+            cls._ALIASES.items(), key=lambda item: len(item[0]), reverse=True
+        ):
+            if pattern in compact:
+                return canonical
+        return compact
+
     async def check_service(self, args: CheckServiceArgs) -> CheckServiceResult:
         requested_name = args.service_name.strip()
-        canonical_name = self._ALIASES.get(requested_name.casefold(), requested_name.casefold())
+        canonical_name = self.resolve_service_name(requested_name)
         record = await self._session.get(ServiceStatusRecord, canonical_name)
         if record is None:
             # Reporting an unknown service as operational would be a fabrication.

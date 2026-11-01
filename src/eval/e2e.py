@@ -45,7 +45,7 @@ from backend.governance.executor import ReadToolExecutor
 from backend.graph.builder import build_ticket_graph
 from backend.graph.checkpointing import create_postgres_checkpointer
 from backend.graph.context import GraphContext
-from backend.integrations.model_client import ModelOutputInvalid
+from backend.integrations.model_client import ModelConfigurationError, ModelOutputInvalid
 from backend.integrations.prompt_loader import LoadedPrompt
 from backend.jobs.tickets import GraphTicketRunner, WorkerAuditSink, create_default_adapters
 from eval.schemas import (
@@ -79,6 +79,7 @@ SEMANTIC_NODES = frozenset(
         "action_execute",
         "finalizer",
         "reject",
+        "reject_request",
         "escalate",
     }
 )
@@ -138,15 +139,49 @@ class LiveEvalConfigurationError(RuntimeError):
     """The requested E2E run is unsafe or its live dependencies are unavailable."""
 
 
-def validate_e2e_dataset(dataset: GoldenDataset) -> None:
-    """Reject smoke/subset datasets from the full E2E acceptance stage."""
-    if (
-        dataset.level != "full"
-        or dataset.review_status != "reviewed"
-        or len(dataset.cases) != 80
-    ):
+E2E_CASE_BANDS: dict[str, tuple[int, int | None]] = {
+    "development": (1, 19),
+    "smoke": (20, 79),
+    "full": (80, None),
+}
+
+
+def e2e_case_band(level: str) -> tuple[int, int | None]:
+    """Return the inclusive case-count band a declared dataset level must satisfy."""
+    try:
+        return E2E_CASE_BANDS[level]
+    except KeyError:
         raise LiveEvalConfigurationError(
-            "e2e-candidate requires the unchanged reviewed full dataset of exactly 80 cases"
+            "unsupported dataset level "
+            + repr(level)
+            + "; expected one of "
+            + repr(sorted(E2E_CASE_BANDS))
+        ) from None
+
+
+def validate_e2e_dataset(dataset: GoldenDataset) -> None:
+    """Reject unreviewed or mis-levelled datasets from the live E2E stage.
+
+    The gate binds the declared ``level`` to its case-count band instead of a
+    fixed count. A reviewed 20-case smoke set may run the real graph, but the
+    same 20 cases labelled ``full`` are still refused, and the artifact records
+    ``dataset_level`` so a smoke run can never be read as a full acceptance.
+    """
+    if dataset.review_status != "reviewed":
+        raise LiveEvalConfigurationError(
+            "e2e-candidate requires a human-reviewed dataset (review_status=reviewed)"
+        )
+    low, high = e2e_case_band(dataset.level)
+    count = len(dataset.cases)
+    if count < low:
+        raise LiveEvalConfigurationError(
+            f"e2e-candidate requires a reviewed {dataset.level} dataset with at "
+            f"least {low} cases; got {count}"
+        )
+    if high is not None and count > high:
+        raise LiveEvalConfigurationError(
+            f"e2e-candidate requires a reviewed {dataset.level} dataset with at "
+            f"most {high} cases; got {count}"
         )
 
 
@@ -157,6 +192,8 @@ def _format_e2e_error(exc: Exception, node_names: list[str]) -> str:
             f"ModelOutputInvalid:{exc.output_model}:"
             f"repairs={exc.repair_attempts}:validation={exc.validation_summary}"
         )
+    elif isinstance(exc, ModelConfigurationError):
+        code = f"ModelConfigurationError:{exc.reason_code}"
     else:
         code = type(exc).__name__
     return f"{code}:after={node_names[-1]}" if node_names else code
@@ -233,6 +270,11 @@ def derive_actual_handoffs(node_names: list[str]) -> list[ExpectedHandoff]:
         if index + 1 >= len(nodes):
             continue
         target = nodes[index + 1]
+        # The reviewed role vocabulary has no separate reject role: a
+        # deterministic rejection is a terminal finalization. Normalizing the
+        # node name keeps the observed path comparable with the reviewed labels.
+        if target == "reject_request":
+            target = "finalizer"
 
         if source == "supervisor":
             route_targets = {
@@ -418,6 +460,22 @@ def _is_high_risk_bypass(
     )
 
 
+def _retrieved_document_ids_from_audits(audits: list[ToolCallRecord]) -> list[str]:
+    """Read actual governed search IDs from the safe tool audit projection."""
+    document_ids: list[str] = []
+    for audit in audits:
+        if audit.tool_name != "search_knowledge" or audit.outcome not in (
+            "succeeded",
+            "cache_hit",
+        ):
+            continue
+        summary = audit.result_summary
+        raw_ids = summary.get("document_ids") if summary is not None else None
+        if isinstance(raw_ids, list):
+            document_ids.extend(item for item in raw_ids if isinstance(item, str))
+    return list(dict.fromkeys(document_ids))
+
+
 def _build_case_result(
     *,
     case: GoldenCase,
@@ -478,7 +536,7 @@ def _build_case_result(
         predicted_risk=risk.risk_level if risk is not None else None,
         actual_require_human=risk.require_human if risk is not None else None,
         actual_outcome=actual_status,
-        retrieved_document_ids=[ref.document_id for ref in references],
+        retrieved_document_ids=_retrieved_document_ids_from_audits(audits),
         actual_business_steps=len(audits),
         latency_ms=elapsed_ms,
         high_risk_bypass=_is_high_risk_bypass(

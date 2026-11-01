@@ -248,6 +248,14 @@ def assess_risk(
                     f"refund requester {args.requester_id}."
                 ),
             )
+        if resource is not None and resource.status == "not_found":
+            return RiskDecision(
+                allowed=False,
+                risk_level=RiskLevel.LOW,
+                require_human=False,
+                reason_code=PolicyReason.DENY_RESOURCE_NOT_FOUND,
+                explanation=f"Order {args.order_id} does not exist.",
+            )
         if resource is not None and resource.owner_id != actor.user_id:
             return RiskDecision(
                 allowed=False,
@@ -259,6 +267,59 @@ def assess_risk(
                     f"does not match actor {actor.user_id}."
                 ),
             )
+        if resource is None:
+            if args.amount < REFUND_APPROVAL_THRESHOLD_USD:
+                return RiskDecision(
+                    allowed=False,
+                    risk_level=RiskLevel.LOW,
+                    require_human=False,
+                    reason_code=PolicyReason.DENY_RESOURCE_UNVERIFIED,
+                    explanation=(
+                        f"Order {args.order_id} must be verified before a low-risk refund."
+                    ),
+                )
+        else:
+            if resource.status != "paid":
+                return RiskDecision(
+                    allowed=False,
+                    risk_level=RiskLevel.LOW,
+                    require_human=False,
+                    reason_code=PolicyReason.DENY_RESOURCE_STATE,
+                    explanation=(
+                        f"Order {args.order_id} is not in a refundable paid state."
+                    ),
+                )
+            if args.order_version != resource.version:
+                return RiskDecision(
+                    allowed=False,
+                    risk_level=RiskLevel.LOW,
+                    require_human=False,
+                    reason_code=PolicyReason.DENY_STALE_RESOURCE,
+                    explanation=(
+                        f"Order {args.order_id} changed after the refund was prepared."
+                    ),
+                )
+            if resource.refundable_amount is None:
+                return RiskDecision(
+                    allowed=False,
+                    risk_level=RiskLevel.LOW,
+                    require_human=False,
+                    reason_code=PolicyReason.DENY_RESOURCE_UNVERIFIED,
+                    explanation=(
+                        f"The refundable amount for order {args.order_id} could not be verified."
+                    ),
+                )
+            if args.amount > resource.refundable_amount:
+                return RiskDecision(
+                    allowed=False,
+                    risk_level=RiskLevel.LOW,
+                    require_human=False,
+                    reason_code=PolicyReason.DENY_INSUFFICIENT_REFUNDABLE_AMOUNT,
+                    explanation=(
+                        f"Refund amount exceeds the verified refundable amount for order "
+                        f"{args.order_id}."
+                    ),
+                )
         if args.amount >= REFUND_APPROVAL_THRESHOLD_USD:
             return RiskDecision(
                 allowed=True,

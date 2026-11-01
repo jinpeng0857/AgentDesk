@@ -466,6 +466,14 @@ async def test_timeout_records_failure_and_audits_timeout() -> None:
         agent_id="action",
         operation=pending,
         actor=AUTH_ACTOR,
+        resource=ResourceContext(
+            resource_type="order",
+            resource_id="ord-1",
+            owner_id=AUTH_ACTOR.user_id,
+            status="paid",
+            version=1,
+            refundable_amount=Decimal("100.00"),
+        ),
     )
 
     assert result.outcome is ToolOutcome.TIMED_OUT

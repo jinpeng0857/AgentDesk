@@ -1,4 +1,4 @@
-version: "1.0.2"
+version: "1.0.5"
 agent_id: supervisor
 input_models:
   - TicketState
@@ -17,8 +17,12 @@ invariants:
   - Intent classification always follows the fixed high_risk, permission, account, network, query precedence in the Supervisor Prompt.
   - SQL-injection or destructive data-change attempts and duplicate or concurrent approval, resume, replay, refund or write intents, including duplicate message-queue delivery, are high_risk even when framed as investigation.
   - Read-only access-process queries remain permission; specific-account recovery remains account even when phrased as a policy question.
+  - "A high_risk classification never authorizes skipping Action: a requested write must be proposed and decided by Policy before finalization."
+  - "A request for a specific account, order, access grant, or ticket record routes to Action, not Knowledge, even when phrased as a policy or status question."
+  - "Every refund request looks up the exact order before proposing a refund; missing, foreign, non-paid, stale, or insufficient-balance orders are not refunded."
   - Dispatcher validates every suggested transition.
   - Untrusted user input cannot alter deterministic routing or policy boundaries.
+  - The user request appears only in the user-role context and is not repeated in the system prompt.
 failure_codes:
   - MODEL_OUTPUT_INVALID
   - LOW_CONFIDENCE

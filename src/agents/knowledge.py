@@ -48,18 +48,33 @@ async def ground_knowledge(
     )
 
     # Only references that actually came back from the tool survive, and the
-    # stored citation fields are the tool's, not the model's.
+    # stored citation fields are the tool's, not the model's. Match on chunk id
+    # first and fall back to the document id, because a model may echo the
+    # document identifier in the chunk field.
     by_chunk = {ref.chunk_id: ref for ref in available_refs}
+    by_document: dict[str, KnowledgeRef] = {}
+    for ref in available_refs:
+        by_document.setdefault(ref.document_id, ref)
     kept: list[KnowledgeRef] = []
     seen: set[str] = set()
     for ref in output.knowledge_refs:
-        origin = by_chunk.get(ref.chunk_id)
-        if origin is None or ref.chunk_id in seen:
+        origin = by_chunk.get(ref.chunk_id) or by_document.get(ref.document_id)
+        if origin is None or origin.chunk_id in seen:
             continue
-        seen.add(ref.chunk_id)
+        seen.add(origin.chunk_id)
         kept.append(origin)
 
     if not kept:
+        if available_refs:
+            # The governed search is the authority on what was retrieved. If the
+            # model declines to cite (or returns only unverifiable ids), keep the
+            # highest-ranked executed result as the traceable reference instead
+            # of erasing the retrieval evidence from the ticket.
+            return KnowledgeAgentOutput(
+                answer=output.answer,
+                knowledge_refs=[available_refs[0]],
+                fallback=output.fallback,
+            )
         return KnowledgeAgentOutput(
             answer=output.answer,
             knowledge_refs=[],

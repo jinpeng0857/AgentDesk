@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "documents": [
     {
       "document_id": "doc-network-vpn",
@@ -17,6 +17,10 @@
         {
           "chunk_id": "doc-network-vpn#3",
           "content": "若服务状态为 operational 且客户端版本正确，收集客户端日志并创建下游跟进工单。"
+        },
+        {
+          "chunk_id": "doc-network-vpn#4",
+          "content": "远程拨入系统间歇性掉线时，先按保守应急指引处理：不要反复重连，保留现有 VPN 客户端版本，记录掉线时间与客户端日志；若知识库连续超时，直接创建网络组跟进工单。"
         }
       ]
     },
@@ -77,6 +81,306 @@
         {
           "chunk_id": "doc-ticket-sla#2",
           "content": "超过响应时限的工单会自动升级到下一级支持组，并保留原始 trace 供复盘。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-dns",
+      "title": "内网 DNS 解析故障处理",
+      "tags": ["network", "dns"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-dns#1",
+          "content": "内网 DNS 服务器运行正常，主备 DNS 地址分别为 10.0.0.2 与 10.0.0.3。当内网无法解析 gitlab.corp 等内部域名时，请先在网络设置中确认主备 DNS 地址配置正确，再清空本地 DNS 缓存后重试。"
+        },
+        {
+          "chunk_id": "doc-network-dns#2",
+          "content": "若地址配置正确仍无法解析，请使用 nslookup gitlab.corp 10.0.0.2 直接向主 DNS 查询，并将解析结果与报错截图附在工单中提交网络组进一步排查。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-ssl",
+      "title": "内部 Wiki SSL 证书更新 SOP",
+      "tags": ["network", "ssl", "certificate"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-ssl#1",
+          "content": "访问内部 Wiki 提示 SSL 证书过期时，请安装根证书信任包，并重新加载浏览器证书缓存。安装完成后关闭并重新打开浏览器，确认地址栏的证书标识恢复为可信状态。"
+        },
+        {
+          "chunk_id": "doc-network-ssl#2",
+          "content": "若浏览器仍提示证书过期，请先检查系统时间是否正确，再确认根证书已导入受信任的根证书颁发机构存储，随后重新加载浏览器证书缓存。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-video",
+      "title": "视频会议网络优化配置",
+      "tags": ["network", "video", "qos"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-video#1",
+          "content": "视频会议出现严重丢包卡顿时，会议专网通常处于正常负载。建议将终端切换至 5GHz 企业专用 SSID，并在会议客户端开启 QoS，优先保障音视频流量。"
+        },
+        {
+          "chunk_id": "doc-network-video#2",
+          "content": "若切换后仍然卡顿，请避开 2.4GHz 拥塞频段，关闭后台大流量下载，并提交工单附上丢包率与会议时间，由网络组继续优化。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-rdp",
+      "title": "跨机房 RDP 超时排查指南",
+      "tags": ["network", "rdp", "mtu"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-rdp#1",
+          "content": "跨机房远程桌面 RDP 经常超时断开时，请启用专线隧道，并将网络接口 MTU 调整为 1400，以避免数据包分片导致的连接中断。"
+        },
+        {
+          "chunk_id": "doc-network-rdp#2",
+          "content": "调整 MTU 后请重启网络适配器并重新连接；若仍然超时，请记录目标机房与时间点，附上 tracert 结果提交网络组排查专线链路。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-proxy",
+      "title": "内网代理 PAC 配置说明",
+      "tags": ["network", "proxy", "pac"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-proxy#1",
+          "content": "公司内网代理 Proxy 自动配置文件 PAC 脚本地址为 http://proxy.corp/proxy.pac，适用于所有办公设备。请在系统或浏览器的代理设置中选择自动配置脚本，并填入该地址。"
+        },
+        {
+          "chunk_id": "doc-network-proxy#2",
+          "content": "保存后请重启浏览器验证外网访问；若 PAC 脚本无法下载，请确认设备已连接办公网并能正常解析 proxy.corp 域名。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-network-dhcp",
+      "title": "IP 地址冲突与 DHCP 设置规范",
+      "tags": ["network", "dhcp"],
+      "chunks": [
+        {
+          "chunk_id": "doc-network-dhcp#1",
+          "content": "办公区禁止私设静态 IP，请将工位电脑切换至 DHCP 自动获取地址，以消除 IP 地址冲突。切换后执行释放与续租命令重新获取租约，再测试网络是否恢复。"
+        },
+        {
+          "chunk_id": "doc-network-dhcp#2",
+          "content": "若冲突仍然存在，请提交冲突排查工单，注明冲突 IP、MAC 地址与工位号，由网络组定位私设静态 IP 的设备并处理，同时检查地址池余量。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-account-mfa",
+      "title": "MFA 设备丢失重绑流程",
+      "tags": ["account", "mfa", "security"],
+      "chunks": [
+        {
+          "chunk_id": "doc-account-mfa#1",
+          "content": "手机丢失后需要重新绑定 MFA 身份验证器时，请登录企业门户，使用备用恢复码重设 MFA。若备用恢复码不可用，请联系安全运营中心重置密钥。"
+        },
+        {
+          "chunk_id": "doc-account-mfa#2",
+          "content": "重置密钥属于敏感操作，必须由本人通过身份核验后办理；安全运营中心不会通过邮件或电话索取验证码，接到可疑来电请挂断并回拨核实。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-account-policy",
+      "title": "域密码复杂度与轮换策略",
+      "tags": ["account", "password", "policy"],
+      "chunks": [
+        {
+          "chunk_id": "doc-account-policy#1",
+          "content": "域密码最少 12 位，且必须包含大小写字母、数字及特殊字符。域密码每 90 天强制轮换，且不得重复使用最近五次的历史密码。"
+        },
+        {
+          "chunk_id": "doc-account-policy#2",
+          "content": "密码到期前系统会提前七天通过邮件提醒；连续五次输入错误将锁定账号，需等待 15 分钟自动解锁，或按流程申请人工重置。忘记密码可通过自助门户办理。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-account-offboard",
+      "title": "离职员工账号归档与恢复规范",
+      "tags": ["account", "offboarding", "compliance"],
+      "chunks": [
+        {
+          "chunk_id": "doc-account-offboard#1",
+          "content": "离职员工账号已归档，个人无权恢复或重置密码，也不能导出历史邮件。如需恢复账号或调取数据，必须由法务与合规部专项审批并说明具体用途。"
+        },
+        {
+          "chunk_id": "doc-account-offboard#2",
+          "content": "审批通过后由 IT 安全组在监督下临时启用账号，操作全程留痕审计，处理完成后立即重新归档，不得长期保留访问能力或密码，违规操作将追究责任。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-account-sso",
+      "title": "SSO 凭证签名过期排查",
+      "tags": ["account", "sso", "time"],
+      "chunks": [
+        {
+          "chunk_id": "doc-account-sso#1",
+          "content": "SSO 单点登录提示凭证签名过期，通常由本机系统时间偏差导致。请校准本地系统时间，并与网络授时服务器同步，即可消除签名过期偏差。"
+        },
+        {
+          "chunk_id": "doc-account-sso#2",
+          "content": "若同步后仍然报错，请确认设备可以访问内网授时服务器，并清除浏览器中的 SSO 会话缓存后重新登录；必要时重启终端再次同步时间。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-access-approval-chain",
+      "title": "生产数据库读权限审批链",
+      "tags": ["access", "approval", "database"],
+      "chunks": [
+        {
+          "chunk_id": "doc-access-approval-chain#1",
+          "content": "申请生产数据库只读访问前，必须先完成数据安全保密培训。审批链为直属主管初审、DBA 二级审批，两级均通过后方可开通只读账号。"
+        },
+        {
+          "chunk_id": "doc-access-approval-chain#2",
+          "content": "只读权限默认有效期为 90 天，到期自动回收；如需延期请重新提交申请并说明用途，不得私自共享账号或将查询结果外传，到期前一周系统会发送提醒。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-access-code-repo",
+      "title": "保密级代码仓库权限审批标准",
+      "tags": ["access", "repository", "approval"],
+      "chunks": [
+        {
+          "chunk_id": "doc-access-code-repo#1",
+          "content": "保密代码仓按最小权限原则授予，申请人只能获得职责所需的最小范围。审批通常在 1 个工作日内由安全部裁定，逾期可以通过工单催办。"
+        },
+        {
+          "chunk_id": "doc-access-code-repo#2",
+          "content": "开通后禁止将代码外传或分享账号，安全部会定期复核权限，发现越权行为将立即回收权限并记录审计，情节严重的将通报所在部门并追究责任。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-access-cloud",
+      "title": "公有云生产控制台紧急运维审批",
+      "tags": ["access", "cloud", "approval"],
+      "chunks": [
+        {
+          "chunk_id": "doc-access-cloud#1",
+          "content": "公有云生产控制台的紧急运维访问权限，由云架构总监与合规安全组双人会签审批。两位审批人缺一不可，任何单人审批一律无效，审批记录会进入审计台账。"
+        },
+        {
+          "chunk_id": "doc-access-cloud#2",
+          "content": "紧急访问默认有效期不超过 4 小时，操作全程录屏审计，结束后须提交运维说明并交回权限，不得长期保留或转授他人，紧急情况结束后须当天完成复盘。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-access-handover",
+      "title": "转岗后旧系统权限回收制度",
+      "tags": ["access", "handover"],
+      "chunks": [
+        {
+          "chunk_id": "doc-access-handover#1",
+          "content": "转岗员工旧岗位的系统权限，将在转岗生效日起 3 个工作日内全部自动吊销，无需本人另行申请，也不得以交接未完成为由延迟，系统会同步通知本人与主管。"
+        },
+        {
+          "chunk_id": "doc-access-handover#2",
+          "content": "如新岗位仍然需要访问旧系统，请按最小权限原则重新提交权限申请，不得沿用原岗位权限；审批通过后重新开通，原权限不会自动恢复。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-order-refund-policy",
+      "title": "已取消订单退款政策",
+      "tags": ["order", "refund", "finance"],
+      "chunks": [
+        {
+          "chunk_id": "doc-order-refund-policy#1",
+          "content": "依据退款政策，已取消订单的金额将在 3-5 个工作日内自动原路退回，无需人工发起。实际到账时间以支付渠道的处理进度为准。"
+        },
+        {
+          "chunk_id": "doc-order-refund-policy#2",
+          "content": "若超过 5 个工作日仍未到账，请提供订单号与支付流水号提交工单，由财务核对退款状态并跟进处理，必要时联系支付渠道查询，退款进度可在订单详情中查看。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-procurement-cycle",
+      "title": "办公电脑采购与发货周期",
+      "tags": ["procurement", "hardware", "sla"],
+      "chunks": [
+        {
+          "chunk_id": "doc-procurement-cycle#1",
+          "content": "标准办公硬件采购发货周期为 5 个工作日，定制机型为 14 个工作日。周期自采购申请审批通过之日起计算，不含法定节假日。"
+        },
+        {
+          "chunk_id": "doc-procurement-cycle#2",
+          "content": "如遇缺货或物流延误，采购组会提前通知并更新预计发货时间；紧急需求请在申请中注明原因并走加急审批流程，采购组会在两个工作日内回复预计时间。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-order-damaged",
+      "title": "硬件破损退换货理赔指引",
+      "tags": ["order", "damaged", "return"],
+      "chunks": [
+        {
+          "chunk_id": "doc-order-damaged#1",
+          "content": "收到硬件设备破损时，请在签收 24 小时内拍照留存并上传工单，逾期可能影响理赔。资产组将根据核验结果提供换新或退款方案。"
+        },
+        {
+          "chunk_id": "doc-order-damaged#2",
+          "content": "拍照需包含外包装、运单号与设备破损部位；寄回时请使用防震包装，避免运输途中造成二次损坏而影响理赔，缺少任一材料可能导致理赔被驳回。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-finance-reimbursement",
+      "title": "个人垫付采购报销时限",
+      "tags": ["finance", "reimbursement", "invoice"],
+      "chunks": [
+        {
+          "chunk_id": "doc-finance-reimbursement#1",
+          "content": "个人垫付采购报销，需在合规票据上传后，由财务在 5 个工作日内完成打款审批。票据不合规将被退回并要求补充材料，请尽早提交以免影响打款周期。"
+        },
+        {
+          "chunk_id": "doc-finance-reimbursement#2",
+          "content": "报销单据须包含发票、采购申请单与验收记录；金额超过限额时，还需额外附上直属主管的审批意见与用途说明，缺少验收记录的单据一律退回。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-asset-return",
+      "title": "居家办公设备资产归还指引",
+      "tags": ["asset", "return", "logistics"],
+      "chunks": [
+        {
+          "chunk_id": "doc-asset-return#1",
+          "content": "居家办公期间归还办公设备，可使用顺丰到付寄送至公司资产中心。包装需使用防震气泡垫，避免运输途中设备损坏，请勿使用普通快递到付以免产生额外费用。"
+        },
+        {
+          "chunk_id": "doc-asset-return#2",
+          "content": "寄出后请在工单中填写运单号，资产中心签收后会核验设备序列号与配件是否齐全，并完成资产销账；如有配件缺失需按价赔偿，逾期未归还将按资产管理制度处理。"
+        }
+      ]
+    },
+    {
+      "document_id": "doc-order-address-change",
+      "title": "订单交付地址变更与重发",
+      "tags": ["order", "address", "logistics"],
+      "chunks": [
+        {
+          "chunk_id": "doc-order-address-change#1",
+          "content": "订单发货前可在线修改一次交付地址，修改后立即生效。出库后如需修改地址，需由物流组介入调度，可能产生额外运费，修改前请确认新地址可正常签收。"
+        },
+        {
+          "chunk_id": "doc-order-address-change#2",
+          "content": "因地址错误导致退回的订单，重发前需确认新地址并补足运费；多次变更请提交工单，由物流组统一处理并跟进，重发订单默认使用原物流渠道。"
         }
       ]
     }

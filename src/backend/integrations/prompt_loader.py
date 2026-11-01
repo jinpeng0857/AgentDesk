@@ -103,6 +103,7 @@ def build_system_message(
     *,
     user_query: str,
     retrieved_text: str | None = None,
+    include_user_query: bool = True,
 ) -> str:
     sections = [
         prompt.role.strip(),
@@ -110,8 +111,9 @@ def build_system_message(
         f"Constraints:\n{prompt.constraints.strip()}",
         f"Required output schema: {prompt.output_schema.model} "
         f"(strict={str(prompt.output_schema.strict).lower()})",
-        wrap_untrusted("UNTRUSTED USER REQUEST", user_query),
     ]
+    if include_user_query:
+        sections.append(wrap_untrusted("UNTRUSTED USER REQUEST", user_query))
     if retrieved_text is not None:
         sections.append(wrap_untrusted("UNTRUSTED RETRIEVED TEXT", retrieved_text))
     return "\n\n".join(sections)

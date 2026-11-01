@@ -63,6 +63,7 @@ from tools.schemas import (
     RequestAccessArgs,
     ResetPasswordArgs,
     SearchKnowledgeArgs,
+    SearchKnowledgeResult,
     ToolName,
     ToolResultUnion,
 )
@@ -79,6 +80,17 @@ ERROR_TIMEOUT = "TOOL_TIMEOUT"
 ERROR_EXECUTION = "TOOL_EXECUTION_FAILED"
 ERROR_INVALID_RESULT = "INVALID_TOOL_RESULT"
 MAX_TOOL_ATTEMPTS: int = 3
+
+
+def _read_result_summary(tool_name: str, data: BaseModel) -> dict[str, object]:
+    """Keep knowledge IDs for retrieval scoring without persisting document text."""
+    if tool_name == "search_knowledge" and isinstance(data, SearchKnowledgeResult):
+        return {
+            "kind": "search_knowledge",
+            "document_ids": list(dict.fromkeys(ref.document_id for ref in data.refs)),
+            "ref_count": len(data.refs),
+        }
+    return redact_mapping(data.model_dump(mode="json"))
 
 
 @dataclass(frozen=True)
@@ -234,7 +246,7 @@ class ReadToolExecutor:
                 agent_id=agent_id,
                 tool_name=tool_name,
                 args_summary=redact_mapping(validated.model_dump(mode="json")),
-                result_summary=redact_mapping(data.model_dump(mode="json")),
+                result_summary=_read_result_summary(tool_name, data),
                 outcome=ToolOutcome.SUCCEEDED,
                 latency_ms=latency_ms,
                 retry_count=last_retry_count,

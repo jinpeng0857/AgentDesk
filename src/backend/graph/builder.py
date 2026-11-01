@@ -77,6 +77,13 @@ def build_ticket_graph(
         ),
     )
 
+    workflow.add_node(
+        "reject_request",
+        make_dispatch_node(
+            "dispatcher", "reject_request", next_status=TicketStatus.REJECTED
+        ),
+    )
+
     workflow.add_node("finalizer", make_supervisor_finalizer_node(context))
     workflow.add_node(
         "dispatch_finalizer",
@@ -126,6 +133,7 @@ def build_ticket_graph(
             "action_execute": "action_execute",
             "supervisor": "supervisor",
             "finalizer": "finalizer",
+            "rejected": "reject_request",
             "escalated": "escalate",
         },
     )
@@ -137,6 +145,7 @@ def build_ticket_graph(
         {
             "approval": "approval",
             "action_execute": "action_execute",
+            "rejected": "reject_request",
             "escalated": "escalate",
         },
     )
@@ -158,10 +167,12 @@ def build_ticket_graph(
         route_from_action_execute,
         {
             "supervisor": "supervisor",
+            "rejected": "reject_request",
             "escalated": "escalate",
         },
     )
     workflow.add_edge("reject", END)
+    workflow.add_edge("reject_request", END)
     workflow.add_edge("finalizer", "dispatch_finalizer")
     workflow.add_edge("dispatch_finalizer", END)
     workflow.add_edge("escalate", END)

@@ -138,7 +138,10 @@ def route_from_action(state: TicketState) -> str:
         return "policy"
     if action_proposal is not None:
         return "action_execute"
-    return "supervisor"
+    # Action ran but deterministically produced no proposal: the request was
+    # refused (cross-user target or unauthorized tool directive). This is a
+    # business rejection, not an infrastructure escalation.
+    return "rejected"
 
 
 def route_from_policy(state: TicketState) -> str:
@@ -147,8 +150,12 @@ def route_from_policy(state: TicketState) -> str:
         return "escalated"
 
     risk = state.get("risk_decision")
-    if risk is None or not risk.allowed:
+    if risk is None:
         return "escalated"
+    if not risk.allowed:
+        # A deterministic Policy denial is a reviewed business outcome. It must
+        # end in the explicit rejected terminal with zero side effects.
+        return "rejected"
 
     if risk.risk_level is RiskLevel.HIGH or risk.require_human:
         return "approval"
@@ -184,4 +191,8 @@ def route_from_action_execute(state: TicketState) -> str:
 
     if tool_results[-1].outcome in (ToolOutcome.SUCCEEDED, ToolOutcome.CACHE_HIT):
         return "supervisor"
+    if tool_results[-1].outcome is ToolOutcome.REJECTED:
+        # Governance refused the attempt (unknown/unauthorized tool or denied
+        # operation). F-04 requires the rejected terminal, not escalation.
+        return "rejected"
     return "escalated"

@@ -17,6 +17,7 @@ invariants:
   - Self-service access requests for administrator, privileged, root, or equivalent resources require human approval.
   - Unknown or unauthorized operations are denied.
   - Password resets are denied when the target account is missing, inactive, or cannot be verified from PostgreSQL.
+  - Refunds are denied when order ownership, paid status, version, or refundable balance does not match the verified resource.
 failure_codes:
   - POLICY_DENIED
   - APPROVAL_REQUIRED

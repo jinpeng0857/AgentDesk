@@ -1,4 +1,4 @@
-version: "1.0.0"
+version: "1.0.1"
 agent_id: action
 input_models:
   - TicketState
@@ -25,6 +25,10 @@ invariants:
   - Approved operation arguments never change during resume.
   - Requester-scoped arguments use the trusted requester ID from API state, never an untrusted identity in the request.
   - Untrusted user input cannot bypass deterministic policy or approval gates.
+  - Every refund proposal follows a successful query_order for the exact order.
+  - Refund proposals match the verified owner, paid status, version, and available balance.
+  - High-risk destructive or unauthorized tool directives produce no Action proposal.
+  - The user request appears only in the user-role context and is not repeated in the system prompt.
 failure_codes:
   - MODEL_OUTPUT_INVALID
   - TOOL_NOT_ALLOWED

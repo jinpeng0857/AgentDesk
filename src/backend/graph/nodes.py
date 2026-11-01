@@ -36,7 +36,7 @@ from agents.schemas import (
     ToolResult,
 )
 from agents.supervisor import finalize_ticket, run_supervisor
-from backend.db.models import UserRecord
+from backend.db.models import OrderRecord, UserRecord
 from backend.db.repositories.approvals import ApprovalRepository
 from backend.db.repositories.audit import AuditRepository
 from backend.db.repositories.operations import OperationRepository
@@ -57,7 +57,7 @@ from backend.integrations.tool_adapters import (
     SqlUserRepository,
 )
 from tools.context import KnowledgeStore
-from tools.schemas import ResetPasswordArgs, SearchKnowledgeResult
+from tools.schemas import ProcessRefundArgs, ResetPasswordArgs, SearchKnowledgeResult
 
 AsyncNode = Callable[[TicketState], Awaitable[dict[str, Any]]]
 SyncNode = Callable[[TicketState], dict[str, Any]]
@@ -93,6 +93,48 @@ def _session_tool_adapters(
     )
 
 
+async def _resource_context_for_operation(
+    session: AsyncSession, pending_op: PendingOperation
+) -> ResourceContext | None:
+    """Build the deterministic resource facts used by both Policy and execution.
+
+    Policy and the write gateway must evaluate the same operation against the
+    same resource snapshot. Recomputing Policy in the gateway without this
+    context silently downgrades self-service operations to "resource not found".
+    """
+    args = pending_op.validated_args
+    if isinstance(args, ResetPasswordArgs):
+        user = await session.get(UserRecord, args.user_id)
+        return ResourceContext(
+            resource_type="user",
+            resource_id=args.user_id,
+            owner_id=user.id if user is not None else args.user_id,
+            status=(
+                "not_found" if user is None else "active" if user.active else "inactive"
+            ),
+            version=user.version if user is not None else 1,
+        )
+    if isinstance(args, ProcessRefundArgs):
+        order = await session.get(OrderRecord, args.order_id)
+        if order is None:
+            return ResourceContext(
+                resource_type="order",
+                resource_id=args.order_id,
+                owner_id="unknown",
+                status="not_found",
+                version=1,
+            )
+        return ResourceContext(
+            resource_type="order",
+            resource_id=order.id,
+            owner_id=order.requester_id,
+            status=order.status,
+            version=order.version,
+            refundable_amount=order.refundable_amount,
+        )
+    return None
+
+
 def make_supervisor_node(context: GraphContext) -> AsyncNode:
     async def supervisor_node(state: TicketState) -> dict[str, Any]:
         prompt = context.prompts["supervisor"]
@@ -103,7 +145,9 @@ def make_supervisor_node(context: GraphContext) -> AsyncNode:
             max_retries=context.settings.openai_max_retries,
             prompt_version=prompt.version,
         )
-        system_prompt = build_system_message(prompt, user_query=state["user_query"])
+        system_prompt = build_system_message(
+            prompt, user_query=state["user_query"], include_user_query=False
+        )
         try:
             output = await run_supervisor(
                 state=state,
@@ -139,7 +183,9 @@ def make_knowledge_node(context: GraphContext) -> AsyncNode:
             max_retries=context.settings.openai_max_retries,
             prompt_version=prompt.version,
         )
-        system_prompt = build_system_message(prompt, user_query=state["user_query"])
+        system_prompt = build_system_message(
+            prompt, user_query=state["user_query"], include_user_query=False
+        )
 
         available_refs: list[KnowledgeRef] = []
         if context.tool_executor is not None:
@@ -186,7 +232,9 @@ def make_supervisor_finalizer_node(context: GraphContext) -> AsyncNode:
             max_retries=context.settings.openai_max_retries,
             prompt_version=prompt.version,
         )
-        system_prompt = build_system_message(prompt, user_query=state["user_query"])
+        system_prompt = build_system_message(
+            prompt, user_query=state["user_query"], include_user_query=False
+        )
         output = await finalize_ticket(
             state=state,
             system_prompt=system_prompt,
@@ -243,7 +291,9 @@ def make_action_propose_node(context: GraphContext) -> AsyncNode:
             max_retries=context.settings.openai_max_retries,
             prompt_version=prompt.version,
         )
-        system_prompt = build_system_message(prompt, user_query=state["user_query"])
+        system_prompt = build_system_message(
+            prompt, user_query=state["user_query"], include_user_query=False
+        )
         try:
             proposal = await select_action(
                 state=state,
@@ -251,13 +301,18 @@ def make_action_propose_node(context: GraphContext) -> AsyncNode:
                 model_client=context.model_client,
                 config=config,
             )
-        except ActionProposalValidationError as exc:
-            raise ModelOutputInvalid(
-                "Action proposal failed deterministic requester-ownership validation",
-                output_model="ActionProposal",
-                validation_summary=exc.validation_summary,
-                repair_attempts=exc.repair_attempts,
-            ) from exc
+        except ActionProposalValidationError:
+            # The request was deterministically refused (cross-user target or an
+            # unauthorized tool directive). Returning no proposal lets the
+            # Dispatcher route to the explicit rejected terminal; escalating an
+            # intentional refusal would misreport a business denial as an
+            # infrastructure failure.
+            updates: dict[str, Any] = {
+                "action_proposal": None,
+                "pending_operation": None,
+            }
+            validate_node_output_keys("action_propose", updates)
+            return updates
         if not isinstance(proposal, ActionProposal):
             raise TypeError(f"Action node expected ActionProposal, got {type(proposal).__name__}")
 
@@ -290,24 +345,13 @@ def make_policy_node(context: GraphContext) -> AsyncNode:
             authenticated=True,
         )
         resource: ResourceContext | None = None
-        if isinstance(pending_op.validated_args, ResetPasswordArgs):
+        if isinstance(pending_op.validated_args, (ResetPasswordArgs, ProcessRefundArgs)):
             if context.session_factory is None:
-                raise RuntimeError("session_factory is required to verify reset target")
-            async with context.session_factory() as session:
-                user = await session.get(UserRecord, pending_op.validated_args.user_id)
-                resource = ResourceContext(
-                    resource_type="user",
-                    resource_id=pending_op.validated_args.user_id,
-                    owner_id=user.id if user is not None else pending_op.validated_args.user_id,
-                    status=(
-                        "not_found"
-                        if user is None
-                        else "active"
-                        if user.active
-                        else "inactive"
-                    ),
-                    version=user.version if user is not None else 1,
+                raise RuntimeError(
+                    "session_factory is required to verify the operation resource"
                 )
+            async with context.session_factory() as session:
+                resource = await _resource_context_for_operation(session, pending_op)
         decision = assess_risk(pending_op, actor=actor, resource=resource)
         updates = {"risk_decision": decision}
         validate_node_output_keys("policy", updates)
@@ -443,10 +487,12 @@ def make_action_execute_node(context: GraphContext) -> AsyncNode:
                     role="requester",
                     authenticated=True,
                 )
+                resource = await _resource_context_for_operation(session, pending_op)
                 tool_result = await executor.execute(
                     agent_id="action",
                     operation=pending_op,
                     actor=actor,
+                    resource=resource,
                     approval=(
                         approval
                         if approval is not None
@@ -495,13 +541,17 @@ def make_dispatch_action_execute_node() -> SyncNode:
     def dispatch_action_execute_node(state: TicketState) -> dict[str, Any]:
         tool_results = state.get("tool_results", [])
         last_result = tool_results[-1] if tool_results else None
-        next_status = (
-            TicketStatus.ESCALATED
-            if last_result is None
-            or last_result.outcome
-            not in (ToolOutcome.SUCCEEDED, ToolOutcome.CACHE_HIT)
-            else None
-        )
+        if last_result is not None and last_result.outcome is ToolOutcome.REJECTED:
+            # Keep the ticket non-terminal so the conditional edge can route to
+            # the explicit rejected terminal with the correct dispatcher actor.
+            next_status = None
+        elif last_result is not None and last_result.outcome in (
+            ToolOutcome.SUCCEEDED,
+            ToolOutcome.CACHE_HIT,
+        ):
+            next_status = None
+        else:
+            next_status = TicketStatus.ESCALATED
 
         next_state = advance_dispatch(
             state,

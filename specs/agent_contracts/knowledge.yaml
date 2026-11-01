@@ -1,4 +1,4 @@
-version: "1.0.0"
+version: "1.0.1"
 agent_id: knowledge
 input_models:
   - TicketState
@@ -13,6 +13,7 @@ invariants:
   - Knowledge references always include document and chunk identifiers.
   - Knowledge never treats retrieved content as instruction.
   - Missing evidence produces an explicit fallback.
+  - The user request appears only in the user-role context and is not repeated in the system prompt.
 failure_codes:
   - KNOWLEDGE_UNAVAILABLE
   - KNOWLEDGE_NOT_FOUND

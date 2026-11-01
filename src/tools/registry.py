@@ -120,6 +120,10 @@ TOOL_REGISTRY = MappingProxyType(
             name="check_service",
             description=(
                 "Side effects: read. Required inputs: service_name. "
+                "Tracked names: vpn (alias company_vpn), mail (email_service), guest_wifi, "
+                "dns, video_conference, ldap, switch, intranet, system_metrics, "
+                "authentication_service, workerhost. Common Chinese display names such as "
+                "邮件服务, 视频会议, 交换机 and 统一身份认证 are resolved deterministically. "
                 "Result: operational status, optional incident ID, and check time. "
                 "Sensitive data: none. Approval: none."
             ),

@@ -95,6 +95,7 @@ def test_refund_amount_boundary_199_99_is_medium_risk() -> None:
         owner_id="user-requester-001",
         status="paid",
         version=1,
+        refundable_amount=Decimal("250.00"),
     )
     decision = assess_risk(op, actor=AUTH_ACTOR, resource=res)
 
@@ -114,6 +115,7 @@ def test_refund_amount_boundary_200_00_is_high_risk_and_requires_human() -> None
         owner_id="user-requester-001",
         status="paid",
         version=1,
+        refundable_amount=Decimal("250.00"),
     )
     decision = assess_risk(op, actor=AUTH_ACTOR, resource=res)
 
@@ -158,6 +160,47 @@ def test_refund_denies_resource_owner_mismatch() -> None:
 
     assert decision.allowed is False
     assert decision.reason_code == PolicyReason.DENY_NOT_OWNER
+
+
+def test_low_refund_is_denied_when_order_resource_is_unverified() -> None:
+    decision = assess_risk(_make_refund_op(Decimal("50.00")), actor=AUTH_ACTOR)
+
+    assert decision.allowed is False
+    assert decision.reason_code.value == "deny_resource_unverified"
+
+
+def test_refund_is_denied_when_order_version_is_stale() -> None:
+    op = _make_refund_op(Decimal("50.00"), order_version=1)
+    resource = ResourceContext(
+        resource_type="order",
+        resource_id="ord-001",
+        owner_id="user-requester-001",
+        status="paid",
+        version=2,
+        refundable_amount=Decimal("100.00"),
+    )
+
+    decision = assess_risk(op, actor=AUTH_ACTOR, resource=resource)
+
+    assert decision.allowed is False
+    assert decision.reason_code.value == "deny_stale_resource"
+
+
+def test_refund_is_denied_when_amount_exceeds_verified_available_amount() -> None:
+    op = _make_refund_op(Decimal("75.00"))
+    resource = ResourceContext(
+        resource_type="order",
+        resource_id="ord-001",
+        owner_id="user-requester-001",
+        status="paid",
+        version=1,
+        refundable_amount=Decimal("50.00"),
+    )
+
+    decision = assess_risk(op, actor=AUTH_ACTOR, resource=resource)
+
+    assert decision.allowed is False
+    assert decision.reason_code.value == "deny_insufficient_refundable_amount"
 
 
 def test_refund_schema_validates_decimal_and_rejects_invalid_values() -> None:
@@ -243,6 +286,14 @@ async def test_gateway_auto_executes_medium_refund_without_approval() -> None:
         agent_id="action",
         operation=op,
         actor=AUTH_ACTOR,
+        resource=ResourceContext(
+            resource_type="order",
+            resource_id="ord-001",
+            owner_id=AUTH_ACTOR.user_id,
+            status="paid",
+            version=1,
+            refundable_amount=Decimal("250.00"),
+        ),
     )
 
     assert result.outcome == ToolOutcome.SUCCEEDED

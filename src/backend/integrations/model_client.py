@@ -80,6 +80,10 @@ class ModelOutputInvalid(ModelClientError):
 class ModelConfigurationError(ModelClientError):
     """Credentials, endpoint or request shape are wrong; retrying cannot help."""
 
+    def __init__(self, message: str, *, reason_code: str = "provider_rejected_request") -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+
 
 RETRYABLE_ERRORS: tuple[type[ModelClientError], ...] = (ModelTransportError,)
 
@@ -318,7 +322,10 @@ class OpenAICompatibleModelClient:
             ):
                 fallback_messages = include_json_schema_instruction(messages, response_format)
                 return await self._request(fallback_messages, config, {"type": "json_object"})
-            raise ModelConfigurationError("model provider rejected the request shape") from exc
+            raise ModelConfigurationError(
+                "model provider rejected the request shape",
+                reason_code="request_shape_rejected",
+            ) from exc
         except (openai.APITimeoutError, httpx.TimeoutException) as exc:
             raise ModelTransportError(
                 "model provider request timed out",
@@ -329,12 +336,20 @@ class OpenAICompatibleModelClient:
                 "model provider connection failed",
                 kind=ModelTransportFailureKind.CONNECTION,
             ) from exc
-        except (
-            openai.AuthenticationError,
-            openai.PermissionDeniedError,
-            openai.NotFoundError,
-        ) as exc:
-            raise ModelConfigurationError("model endpoint or credentials were rejected") from exc
+        except openai.AuthenticationError as exc:
+            raise ModelConfigurationError(
+                "model provider authentication was rejected",
+                reason_code="authentication_rejected",
+            ) from exc
+        except openai.PermissionDeniedError as exc:
+            raise ModelConfigurationError(
+                "model provider permission was denied", reason_code="permission_denied"
+            ) from exc
+        except openai.NotFoundError as exc:
+            raise ModelConfigurationError(
+                "model endpoint or name was not found",
+                reason_code="endpoint_or_model_not_found",
+            ) from exc
         except openai.APIStatusError as exc:
             if exc.status_code == 429 or 500 <= exc.status_code <= 599:
                 raise ModelTransportError(
@@ -342,9 +357,14 @@ class OpenAICompatibleModelClient:
                     kind=ModelTransportFailureKind.SERVER_ERROR,
                     status_code=exc.status_code,
                 ) from exc
-            raise ModelConfigurationError("model provider rejected the request") from exc
+            raise ModelConfigurationError(
+                "model provider rejected the request",
+                reason_code=f"http_status_{exc.status_code}",
+            ) from exc
         except openai.OpenAIError as exc:
-            raise ModelConfigurationError("model SDK rejected the request") from exc
+            raise ModelConfigurationError(
+                "model SDK rejected the request", reason_code="sdk_error"
+            ) from exc
         except httpx.HTTPError as exc:
             raise ModelTransportError(
                 "model provider connection failed",

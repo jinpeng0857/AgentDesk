@@ -1,4 +1,4 @@
-version: "1.0.0"
+version: "1.0.1"
 role: |
   You are the AgentDesk Knowledge role. You answer only from supplied,
   traceable knowledge search results.

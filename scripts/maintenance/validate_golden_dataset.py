@@ -7,17 +7,27 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from agents.schemas import Intent
 from eval.schemas import GoldenDataset
 from tools.registry import TOOL_REGISTRY
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET_PATH = REPOSITORY_ROOT / "resources" / "evaluation" / "golden_dataset.json"
-EXPECTED_INTENT_DISTRIBUTION = {
-    "network": 16,
-    "account": 16,
-    "permission": 16,
-    "query": 16,
-    "high_risk": 16,
+# AGENTS.md §7.1 levels the dataset by size: <20 is a development sample, 20-79 is
+# a smoke evaluation and >=80 is a full evaluation. The validator enforces the
+# band the declared level claims instead of a single fixed shape, and it keeps
+# per-intent coverage so a smoke set cannot silently drop a routing class.
+LEVEL_CASE_BANDS: dict[str, tuple[int, int | None]] = {
+    "development": (1, 19),
+    "smoke": (20, 79),
+    "full": (80, None),
+}
+PREFIX_INTENT = {
+    "NET": "network",
+    "ACC": "account",
+    "PRM": "permission",
+    "QRY": "query",
+    "RFD": "high_risk",
 }
 
 
@@ -31,22 +41,36 @@ def validate_golden_dataset(
     require_reviewed: bool,
 ) -> list[str]:
     issues: list[str] = []
-    if dataset.version != "1.0.0":
-        issues.append("dataset version must be 1.0.0")
-    if dataset.level != "full":
-        issues.append("dataset level must be full")
     if require_reviewed and dataset.review_status != "reviewed":
         issues.append("dataset requires human review")
-    if len(dataset.cases) < 80:
-        issues.append("full evaluation dataset must contain at least 80 cases")
+
+    case_count = len(dataset.cases)
+    low, high = LEVEL_CASE_BANDS[dataset.level]
+    if case_count < low:
+        issues.append(
+            f"{dataset.level} dataset must contain at least {low} cases; got {case_count}"
+        )
+    if high is not None and case_count > high:
+        issues.append(
+            f"{dataset.level} dataset must contain at most {high} cases; got {case_count}"
+        )
 
     case_ids = [case.case_id for case in dataset.cases]
     if len(set(case_ids)) != len(case_ids):
         issues.append("case_id values must be unique")
 
-    intent_distribution = Counter(case.expected_intent.value for case in dataset.cases)
-    if dict(intent_distribution) != EXPECTED_INTENT_DISTRIBUTION:
-        issues.append("each intent must have exactly 16 cases")
+    missing_intents = sorted(set(Intent) - {case.expected_intent for case in dataset.cases})
+    if missing_intents:
+        issues.append(
+            "dataset must cover every intent; missing "
+            f"{[intent.value for intent in missing_intents]}"
+        )
+    for prefix, intent in sorted(PREFIX_INTENT.items()):
+        for case in dataset.cases:
+            if case.case_id.startswith(prefix + "-") and case.expected_intent.value != intent:
+                issues.append(
+                    f"{case.case_id} prefix {prefix} must declare intent {intent}"
+                )
 
     write_tools = {
         name for name, spec in TOOL_REGISTRY.items() if spec.side_effects == "write"

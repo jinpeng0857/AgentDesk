@@ -43,6 +43,11 @@ _UNAUTHORIZED_TOOL_DIRECTIVE_MARKERS = (
     "伪造审批",
     "未经核准",
     "prompt injection",
+    "提示词注入",
+    "sql 注入",
+    "sql injection",
+    "delete_user",
+    "直接调用 worker resume",
     "unauthorized tool invocation",
 )
 

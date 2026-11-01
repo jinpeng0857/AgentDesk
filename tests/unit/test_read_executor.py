@@ -166,6 +166,21 @@ async def test_successful_read_returns_validated_data_and_audits_it() -> None:
     assert attempt.agent_id == "knowledge"
 
 
+async def test_search_audit_keeps_document_ids_without_storing_reference_text() -> None:
+    harness = Harness()
+
+    await harness.executor.execute(
+        agent_id="knowledge", tool_name="search_knowledge", raw_args={"query": "vpn"}
+    )
+
+    summary = harness.audit.attempts[0].result_summary
+    assert summary is not None
+    assert summary["document_ids"] == ["DOC-VPN-001"]
+    assert summary["ref_count"] == 1
+    assert "content_excerpt" not in summary
+    assert "refs" not in summary
+
+
 async def test_timeout_is_recorded_as_timed_out() -> None:
     harness = Harness(timeout_s=0.01)
     harness.services.delay_s = 0.5

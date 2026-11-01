@@ -93,11 +93,16 @@ class ChromaKnowledgeStore:
             {"document_id": document_id, "chunk_id": chunk_id, "title": title}
             for chunk_id, _content in chunks
         ]
+        # Embed the title with the chunk: users ask about the document subject
+        # ("保密级代码仓库权限...") while a chunk may only repeat part of it.
+        # The stored document text stays chunk-only so excerpts are unchanged.
         self._collection.add(
             ids=ids,
             documents=documents,
             metadatas=metadatas,
-            embeddings=[hash_embedding(content) for _chunk_id, content in chunks],
+            embeddings=[
+                hash_embedding(f"{title}\n{content}") for _chunk_id, content in chunks
+            ],
         )
         return len(ids)
 

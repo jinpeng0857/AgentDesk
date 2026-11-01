@@ -912,9 +912,11 @@ class GoldenCase(BaseModel):
 
 ### 14.2 数据集规模
 
-- 少于 20：开发样例，不发布指标；
-- 20–79：冒烟评估；
-- 至少 80 且覆盖 F-01～F-08：完整评估。
+- 少于 20（`level=development`）：开发样例，不发布指标；
+- 20–79（`level=smoke`）：冒烟评估；
+- 至少 80 且覆盖 F-01～F-08（`level=full`）：完整评估。
+
+三档由 `scripts/maintenance/validate_golden_dataset.py` 的 `LEVEL_CASE_BANDS` 与 `src/eval/e2e.py` 的 `E2E_CASE_BANDS` 共同约束：条数与声明 level 不符即拒绝。因此 20 条冒烟集可以进入真实图 live 运行，但 artifact 的 `dataset_level=smoke` 会阻止其结果被解释为完整评估。冒烟集为 `resources/evaluation/smoke_dataset.json`。
 
 公开数据和 LLM 只能生成语言变体，全部 expected labels 必须人工审核。数据集版本每次标签变化时递增。
 

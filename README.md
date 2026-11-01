@@ -77,7 +77,8 @@ UI 覆盖登录、工单、人工审批、执行轨迹与评估记录五个页�
 |---|---|
 | `src/{agents,tools,skills,backend,eval}/` | Python 包源码；安装后的 import 名保持不变 |
 | `resources/prompts/` | 四个 Agent 的 Prompt |
-| `resources/evaluation/golden_dataset.json` | 固定 80 条人工审核样例 |
+| `resources/evaluation/golden_dataset.json` | 完整评估用 80 条人工审核样例（`level=full`） |
+| `resources/evaluation/smoke_dataset.json` | 冒烟评估用 20 条人工审核样例（`level=smoke`，从 80 条锚点抽取） |
 | `tests/unit/`、`tests/integration/` | 单元与真实 PostgreSQL/Redis 集成测试 |
 | `tests/acceptance/failure_modes/` | F-01a/b、F-02～F-08 确定性失败验收 |
 | `tests/support/fakes/` | 离线测试替身 |
@@ -101,6 +102,7 @@ uv run python scripts/maintenance/export_tool_schemas.py --check
 uv run python scripts/maintenance/export_openapi.py --check
 uv run python scripts/maintenance/validate_agent_contracts.py
 uv run python scripts/maintenance/validate_golden_dataset.py
+uv run python scripts/maintenance/validate_golden_dataset.py --path resources/evaluation/smoke_dataset.json
 uv run python scripts/maintenance/validate_test_matrix.py
 ```
 
@@ -135,7 +137,7 @@ uv run python -m eval.run_eval --mode live --stage model-baseline `
   --output artifacts/evaluation/candidates/qwen3-8b-model-baseline.local.json
 ```
 
-完整图候选需使用独立的 PostgreSQL `*_test` 数据库，让完整 80 条固定样例经过真实模型、图、工具网关与 checkpoint。`--concurrency` 控制并行图任务上限（默认 4，最大 8）；只读样例可并发，包含写 Tool 的样例会独占模拟数据夹具并在完成后恢复。artifact 同时记录配置并发度与实测最大并发度：
+完整图候选需使用独立的 PostgreSQL `*_test` 数据库，让审核过的样例经过真实模型、图、工具网关与 checkpoint。数据集按 `level` 分级准入：`development` 1–19 条、`smoke` 20–79 条、`full` ≥80 条；条数与声明的 `level` 不符会被拒绝，因此 20 条冒烟结果无法被当成完整评估。`--concurrency` 控制并行图任务上限（默认 4，最大 8）；只读样例可并发，包含写 Tool 的样例会独占模拟数据夹具并在完成后恢复。artifact 同时记录配置并发度与实测最大并发度：
 
 ```powershell
 $env:EVAL_TEST_DATABASE_URL = "postgresql+asyncpg://agentdesk:agentdesk@127.0.0.1:5432/agentdesk_eval_test"
@@ -144,6 +146,16 @@ uv run python -m eval.run_eval --mode live --stage e2e-candidate `
   --database-url $env:EVAL_TEST_DATABASE_URL `
   --concurrency 4 `
   --output artifacts/evaluation/candidates/qwen3-8b-e2e-candidate.local.json
+```
+
+20 条冒烟集走同一入口，只需换 `--dataset`。artifact 会记录 `dataset_level=smoke`；按 `AGENTS.md` §7.1 这种规模只能称为冒烟评估，不得作为完整评估成绩发布：
+
+```powershell
+uv run python -m eval.run_eval --mode live --stage e2e-candidate `
+  --dataset resources/evaluation/smoke_dataset.json `
+  --model qwen3:8b --base-url http://localhost:11434/v1 --api-key ollama `
+  --database-url $env:EVAL_TEST_DATABASE_URL `
+  --output artifacts/evaluation/candidates/qwen3-8b-e2e-smoke.local.json
 ```
 
 E2E 观测值来自实际图状态、数据库投影和审计；expected labels 只在运行完成后用于计分。门槛见 `AGENTS.md` §7.2；轨迹效率和 P95 只有与相同数据集、stage、模型及 endpoint 的真实候选比较才有意义。Live artifact 标记工作树状态和变更摘要。`--update-baseline` 仍只生成待审阅副本，不会改写官方基线。
